@@ -1,0 +1,228 @@
+# Member Insights Processor Configuration
+
+# BigQuery Configuration  
+bigquery:
+  project_id: "i-sales-analytics"  # Matches existing codebase
+  dataset_id: "3i_analytics"  # Matches existing codebase
+  table_name: "eni_vectorizer__all"  # Matches existing codebase
+
+# ENI Source Type and Subtype Mappings to Context Files
+# Based on actual data from eni_types_output.csv
+eni_mappings:
+  airtable_affiliations:
+    null: "context/airtable_affiliations/default.md"
+    default: "context/airtable_affiliations/default.md"
+
+  airtable_deals_sourced:
+    null: "context/airtable_deals_sourced/default.md"
+    default: "context/airtable_deals_sourced/default.md"
+
+  airtable_notes:
+    null: "context/airtable_notes/default.md"
+    default: "context/airtable_notes/default.md"
+    intro_preferences: "context/airtable_notes/intro_preferences.md"
+    investing_preferences: "context/airtable_notes/investing_preferences.md"
+
+  member_requests:
+    requested: "context/member_requests/requested.md"
+    responded: "context/member_requests/responded.md"
+    suggested: "context/member_requests/suggested.md"
+    default: "context/member_requests/requested.md"
+
+  pipedrive_notes:
+    null: "context/pipedrive_notes/default.md"
+    default: "context/pipedrive_notes/default.md"
+
+  recurroo:
+    asset_class: "context/recurroo/asset_class.md"
+    biography: "context/recurroo/biography.md"
+    sector: "context/recurroo/sector.md"
+    social: "context/recurroo/social.md"
+    default: "context/recurroo/biography.md"
+
+  whatsapp_messages:
+    _chat: "context/whatsapp_messages/_chat.md"
+    ai_ml: "context/whatsapp_messages/ai_ml.md"
+    art_art_investing: "context/whatsapp_messages/art_art_investing.md"
+    bay_area: "context/whatsapp_messages/bay_area.md"
+    bikes_boats_planes_cars: "context/whatsapp_messages/bikes_boats_planes_cars.md"
+    blockchain: "context/whatsapp_messages/blockchain.md"
+    boston: "context/whatsapp_messages/boston.md"
+    canada: "context/whatsapp_messages/canada.md"
+    caribbean_latam: "context/whatsapp_messages/caribbean_latam.md"
+    chicago: "context/whatsapp_messages/chicago.md"
+    dc_dmv: "context/whatsapp_messages/dc_dmv.md"
+    estate_tax_planning: "context/whatsapp_messages/estate_tax_planning.md"
+    europe: "context/whatsapp_messages/europe.md"
+    florida: "context/whatsapp_messages/florida.md"
+    gadgets_devices_gizmos: "context/whatsapp_messages/gadgets_devices_gizmos.md"
+    golf: "context/whatsapp_messages/golf.md"
+    hamptons: "context/whatsapp_messages/hamptons.md"
+    health_hackers: "context/whatsapp_messages/health_hackers.md"
+    home_vacation_swap: "context/whatsapp_messages/home_vacation_swap.md"
+    israel_regional: "context/whatsapp_messages/israel_regional.md"
+    israel_support: "context/whatsapp_messages/israel_support.md"
+    job_board: "context/whatsapp_messages/job_board.md"
+    los_angeles: "context/whatsapp_messages/los_angeles.md"
+    market_reactions: "context/whatsapp_messages/market_reactions.md"
+    motorcycle_enthusiasts: "context/whatsapp_messages/motorcycle_enthusiasts.md"
+    needs_leads: "context/whatsapp_messages/needs_leads.md"
+    nyc: "context/whatsapp_messages/nyc.md"
+    nyc_poker: "context/whatsapp_messages/nyc_poker.md"
+    nyc_tennis_padel: "context/whatsapp_messages/nyc_tennis_padel.md"
+    parenting: "context/whatsapp_messages/parenting.md"
+    philanthropy: "context/whatsapp_messages/philanthropy.md"
+    puerto_rico: "context/whatsapp_messages/puerto_rico.md"
+    real_estate: "context/whatsapp_messages/real_estate.md"
+    recommended_reading: "context/whatsapp_messages/recommended_reading.md"
+    skiing_snowboarding: "context/whatsapp_messages/skiing_snowboarding.md"
+    texas: "context/whatsapp_messages/texas.md"
+    travel: "context/whatsapp_messages/travel.md"
+    travel_ideas: "context/whatsapp_messages/travel_ideas.md"
+    venture: "context/whatsapp_messages/venture.md"
+    watches: "context/whatsapp_messages/watches.md"
+    wine: "context/whatsapp_messages/wine.md"
+    women_3i: "context/whatsapp_messages/women_3i.md"
+    default: "context/whatsapp_messages/_chat.md"
+
+# System Prompt Mappings
+system_prompts:
+  member_summary: "config/system_prompts/member_summary.md"
+  insight_generation: "config/system_prompts/insight_generation.md"
+  structured_insight: "config/system_prompts/structured_insight.md"
+  investment_analysis: "config/system_prompts/investment_analysis.md"
+  member_matching: "config/system_prompts/member_matching.md"
+  deal_recommendations: "config/system_prompts/deal_recommendations.md"
+
+# Airtable Configuration
+airtable:
+  # Note: Set AIRTABLE_API_KEY as environment variable for security
+  base_id: "appkFHamG9nZzbBj6"
+  
+  # Legacy field mapping (for backward compatibility)
+  field_mapping:
+    content: "AI Summary"
+    contact_id: "Contact ID"
+    eni_id: "ENI ID"
+    last_updated: "Last Updated"
+    eni_source_type: "ENI Source Type"
+    eni_source_subtype: "ENI Source Subtype"
+    member_name: "Member Name"
+  
+  # Structured Insight Configuration
+  structured_insight:
+    base_id: "appkFHamG9nZzbBj6"
+    tables:
+      note_submission:
+        table_id: "tbl20Jef8xiGyenei"
+        table_name: "Note Submission"
+        fields:
+          find_by_contact_lookup: "fldsKpaYfhUdzUL48"
+          note_submission_type: "fldzj6970jz8JBBnm"
+          note_content: "fld2NogEAmaKqOym3"
+          deals: "fld6NIV3PcmsfiBmo"
+          introductions: "fldpaZmR2qgQOKyvm"
+        status_column_value:
+          elvis: "Elvis"
+      master:
+        table_id: "tblkKWKRCEwl6aGDc"
+        table_name: "3i Members (All Members)"
+        fields:
+          contact_id: "fldIbmabUaYUBmn4v"
+          pipedrive_deal_id: "fldnODYlzYbF71GZr"
+          name: "fld18KuZ39yR5uR6b"
+          email: "fldQDs192pHQgLo1F"
+
+# AI Configuration
+# Choose between 'openai' or 'gemini'
+ai_provider: "openai"
+
+# OpenAI Configuration
+openai:
+  # Note: Set OPENAI_API_KEY as environment variable for security
+  model_name: "o1-mini"
+  
+  # Generation settings
+  generation_config:
+    temperature: 0.7
+    max_tokens: 8192
+    top_p: 0.8
+    presence_penalty: 0.0
+    frequency_penalty: 0.0
+  
+  # Rate limiting and retry settings
+  api_settings:
+    max_retries: 3
+    retry_delay_base: 2  # seconds (exponential backoff)
+    timeout_seconds: 60
+
+# Google Gemini AI Configuration
+gemini:
+  # Note: Set GEMINI_API_KEY as environment variable for security
+  model_name: "gemini-2.5-flash"
+  
+  # Generation settings
+  generation_config:
+    temperature: 0.7
+    max_output_tokens: 8192
+    top_p: 0.8
+    top_k: 40
+  
+  # Rate limiting and retry settings
+  api_settings:
+    max_retries: 3
+    retry_delay_base: 2  # seconds (exponential backoff)
+    timeout_seconds: 60
+    
+  # Safety settings (optional)
+  safety_settings:
+    # Use default safety settings for now
+    enabled: true
+
+# Processing Configuration
+processing:
+  # AI Provider selection
+  ai_provider: "openai"  # Choose 'openai' or 'gemini'
+  
+  # Maximum number of contacts to process in a single batch
+  max_batch_size: 100
+  
+  # Rate limiting settings
+  api_rate_limit:
+    requests_per_minute: 30
+    retry_delay_seconds: 2
+    max_retries: 3
+  
+  # Default system prompt for processing
+  default_system_prompt: "structured_insight"
+  
+  # Processing filter configuration
+  filter_config:
+    # Default filter file to use for processing
+    default_filter_file: "config/processing_filters.yaml"
+    
+    # Whether to enforce strict filtering (reject unknown types)
+    strict_filtering: true
+    
+    # Whether to log filtered out records
+    log_filtered_records: true
+  
+  # Output settings
+  output:
+    include_metadata: true
+    create_subdirectories: false
+    file_naming_pattern: "{contact_id}_{eni_id}.md"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_file: "logs/processing.log"
+  max_log_size_mb: 10
+  backup_count: 5
+
+# Feature Flags
+features:
+  enable_airtable_sync: true
+  enable_context_validation: true
+  enable_progress_tracking: true
+  enable_error_recovery: true 

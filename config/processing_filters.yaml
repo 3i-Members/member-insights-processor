@@ -1,0 +1,51 @@
+# Processing Filters Configuration
+# This file defines which ENI types and subtypes should be processed
+
+# Filter configuration metadata
+filter_info:
+  name: "default_processing_filter"
+  description: "Default processing filter for member insights"
+  created: "2025-01-04"
+  version: "1.0"
+
+# Processing inclusion rules
+# Each ENI type can specify:
+# - "all": Process all subtypes for this ENI type
+# - List of specific subtypes: Process only the listed subtypes
+# - "none" or empty: Skip this ENI type entirely
+
+eni_processing_rules:
+  # Process all affiliations data
+  airtable_affiliations: "all"
+  
+  # Process all deals sourced data
+  airtable_deals_sourced: "all"
+  
+  # Process all airtable notes
+  airtable_notes: "all"
+  
+  # Process all recurroo data
+  recurroo: "all"
+  
+  # Process only specific WhatsApp message types
+  whatsapp_messages:
+    - "venture"
+    - "needs_leads"
+  
+  # Process only requested member requests
+  member_requests:
+    - "requested"
+  
+  # Explicitly excluded (commented out for clarity)
+  # pipedrive_notes: "none"  # Skip entirely
+
+# Global processing settings
+processing_settings:
+  # Whether to log skipped records
+  log_skipped_records: true
+  
+  # Whether to show processing statistics
+  show_processing_stats: true
+  
+  # Whether to validate all configured subtypes exist
+  validate_subtypes: true 
