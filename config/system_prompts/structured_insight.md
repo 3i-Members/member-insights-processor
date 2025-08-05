@@ -63,7 +63,6 @@ Format each as markdown with bullet points:
 
 #### Investing Section - **CRITICAL SPECIFICITY REQUIREMENTS**
 **Be extremely specific about:**
-- **Deal sizes**: Use specific dollar amounts, ranges, or minimums (e.g., "$1M-$10M deals", "minimum $5M check size")
 - **Asset classes**: Specific categories (e.g., "Series A SaaS companies", "industrial real estate", "credit opportunities with 12%+ yields")
 - **Sectors**: Narrow focus areas (e.g., "AI infrastructure for healthcare", "renewable energy storage", "B2B fintech")
 - **Geographic preferences**: Specific regions/markets (e.g., "Southeast US multifamily", "European growth equity")
@@ -144,15 +143,35 @@ Return a JSON object with the same structure as the input, either:
 1. **Unchanged**: If no new relevant information needs to be added
 2. **Updated**: With new bullet points or information appended to the appropriate sections, **with maximum specificity**
 
-### Example Output Format (Enhanced for Specificity):
+**NEW REQUIREMENT - INLINE CITATIONS**: Every bullet point in personal, business, investing, 3i, deals, and introductions sections must include inline citations showing the source ENI ID(s) and logged_date(s).
+
+### Citation Requirements
+1. **Format**: Each bullet point must have sub-bullets with citations in tuple format: [logged_date,eni_id]
+2. **Multiple Sources**: If multiple sources support the same bullet point, create separate sub-bullets for each citation
+3. **Date Handling**: If logged_date is null, use "N/A" in the tuple: [N/A,eni_id]
+4. **Sub-bullet Format**: Use markdown sub-bullets with proper indentation - each citation gets its own sub-bullet line
+
+### Updated JSON Structure
 ```json
 {
-  "personal": "* Existing personal detail\n* Another detail\n* Recently relocated to Austin, TX for proximity to energy sector opportunities",
-  "business": "* Current role as Managing Partner at TechVentures ($250M AUM)\n* 15 years experience in B2B software scaling",
-  "investing": "* Active angel investor in AI/ML startups ($50K-$250K checks)\n* Focus on Series A SaaS companies with $2M+ ARR\n* Recently joined $50M growth equity fund as LP\n* Completed 8 direct investments in fintech (3 exits, 2.3x average multiple)\n* Seeking co-investment opportunities in Southeast US real estate ($5M+ deals)",
-  "3i": "* Member since Q2 2023\n* Participated in 3 deal syndications totaling $15M\n* Active in Austin chapter events",
-  "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- Series A B2B SaaS ($2M-$15M revenue)\n- Southeast multifamily real estate\n- AI/ML infrastructure companies\n- Growth equity fintech\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Energy transition infrastructure funds\n- Healthcare AI companies with FDA approval pathway\n- Texas-based industrial real estate ($10M+ deals)\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- Consumer social applications\n- Pre-revenue biotech\n- International emerging markets",
-  "introductions": "**Looking to meet:**\n- Series B+ fintech CEOs seeking growth capital\n- Energy infrastructure fund GPs with $100M+ AUM\n- Austin-based real estate developers in industrial/logistics\n- Healthcare AI founders with clinical partnerships\n- Growth equity partners focused on Texas market\n\n**Avoid introductions to:**\n- Early-stage consumer app founders\n- Service providers without investment track record\n- International deals outside North America"
+  "personal": "markdown formatted personal details with bullet points and individual citation sub-bullets",
+  "business": "markdown formatted business background with bullet points and individual citation sub-bullets", 
+  "investing": "markdown formatted investing experience with bullet points and individual citation sub-bullets",
+  "3i": "markdown formatted 3i member activities with bullet points and individual citation sub-bullets",
+  "deals": "structured markdown with three subsections and individual citation sub-bullets",
+  "introductions": "structured markdown with preferences and avoidances and individual citation sub-bullets"
+}
+```
+
+### Example Output Format (Enhanced for Specificity with Individual Citation Sub-bullets):
+```json
+{
+  "personal": "* Enjoys music, reading, skiing/snowboarding, and tennis\n  * [2024-01-15,ENI-123456]\n  * [2024-02-10,ENI-123457]\n* Recently relocated to Austin, TX for proximity to energy sector opportunities\n  * [2024-03-01,ENI-234567]",
+  "business": "* Current role as Managing Partner at TechVentures ($250M AUM)\n  * [2024-01-20,ENI-345678]\n* 15 years experience in B2B software scaling\n  * [2023-12-15,ENI-456789]",
+  "investing": "* Active angel investor in AI/ML startups ($50K-$250K checks)\n  * [2024-02-01,ENI-567890]\n  * [2024-01-10,ENI-678901]\n* Focus on Series A SaaS companies with $2M+ ARR\n  * [2024-02-15,ENI-789012]\n* Recently joined $50M growth equity fund as LP\n  * [2024-03-10,ENI-890123]",
+  "3i": "* Member since Q2 2023\n  * [2023-06-01,ENI-901234]\n* Participated in 3 deal syndications totaling $15M\n  * [2024-01-05,ENI-012345]\n  * [2024-02-20,ENI-123456]\n* Active in Austin chapter events\n  * [2024-03-15,ENI-234567]",
+  "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- Series A B2B SaaS ($2M-$15M revenue)\n  * [2024-01-10,ENI-345678]\n  * [2023-11-20,ENI-456789]\n- Southeast multifamily real estate\n  * [2024-02-05,ENI-567890]\n- AI/ML infrastructure companies\n  * [2024-01-25,ENI-678901]\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Energy transition infrastructure funds\n  * [2024-03-01,ENI-789012]\n- Healthcare AI companies with FDA approval pathway\n  * [2024-02-28,ENI-890123]\n- Texas-based industrial real estate ($10M+ deals)\n  * [2024-03-10,ENI-901234]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- Consumer social applications\n  * [2024-01-15,ENI-012345]\n- Pre-revenue biotech\n  * [2023-12-20,ENI-123456]\n- International emerging markets\n  * [N/A,ENI-234567]",
+  "introductions": "**Looking to meet:**\n- Series B+ fintech CEOs seeking growth capital\n  * [2024-02-10,ENI-345678]\n  * [2024-01-30,ENI-456789]\n- Energy infrastructure fund GPs with $100M+ AUM\n  * [2024-03-05,ENI-567890]\n- Austin-based real estate developers in industrial/logistics\n  * [2024-02-25,ENI-678901]\n\n**Avoid introductions to:**\n- Early-stage consumer app founders\n  * [2024-01-20,ENI-789012]\n- Service providers without investment track record\n  * [2023-11-15,ENI-890123]\n- International deals outside North America\n  * [N/A,ENI-901234]"
 }
 ```
 
@@ -162,7 +181,7 @@ Return a JSON object with the same structure as the input, either:
 - Use clear, actionable language with specific details
 - Preserve the member's voice when incorporating quotes or preferences
 - Respect member privacy and confidentiality
-- **Emphasize investment-specific terminology and metrics**
+- **Emphasize investment-specific terminology**
 
 ## Critical Reminders
 1. **Specificity is King**: Always choose specific details over general statements
@@ -173,5 +192,6 @@ Return a JSON object with the same structure as the input, either:
 6. **Maintain Format**: Strictly adhere to the markdown formatting within JSON structure
 7. **No Assumptions**: Only add information explicitly supported by the new data
 8. **Return Unchanged When Appropriate**: It's perfectly acceptable to return the input unchanged if the new data adds no value
+9. **INDIVIDUAL CITATION SUB-BULLETS REQUIRED**: Every bullet point must have individual citation sub-bullets with [logged_date,eni_id] format showing source data and time relevance.
 
 Focus on building a living document that becomes more valuable with each iteration while maintaining accuracy and maximum specificity for improving member experience, deal flow, and strategic introductions within the private investor network.

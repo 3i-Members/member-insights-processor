@@ -274,6 +274,19 @@ class ConfigLoader:
             logger.error(f"Error getting OpenAI configuration: {str(e)}")
             return {}
     
+    def get_anthropic_config(self) -> Dict[str, Any]:
+        """
+        Get Anthropic configuration.
+        
+        Returns:
+            Dict[str, Any]: Anthropic configuration
+        """
+        try:
+            return self.config_data.get('anthropic', {})
+        except Exception as e:
+            logger.error(f"Error getting Anthropic configuration: {str(e)}")
+            return {}
+    
     def get_ai_provider(self) -> str:
         """
         Get the configured AI provider.

@@ -2,58 +2,63 @@
 
 ## Data Source Overview
 - **ENI Source Type**: airtable_affiliations
-- **ENI Source Subtype**: (none)
-- **Primary Purpose**: Track and analyze member professional affiliations and expertise
+- **Primary Purpose**: Track member professional, educational, and organizational affiliations
 - **Data Quality**: High reliability - manually curated from verified sources
 
-## Context Guidelines
+## Data Generation Pattern
+```
+[Member] is affiliated with [Entity] as a [Affiliation Type] sub affiliation type: [Position]. 
+[Entity] is a [Entity Category] described by [Entity Description]. 
+Tags: [Sectors] [Asset Classes] [Strategies]
+```
 
-### Data Structure Understanding
-- Each record represents a professional affiliation or expertise connection
-- Records are manually verified and linked to specific members
-- Sources include: LinkedIn, Pitchbook, Google Search, and Member Notes
-- Contains both current and historical affiliations
+## Categorization Guidelines
 
-### Key Data Components
-1. **Entity Information**
-   - Entity name and URL
-   - Entity description (standardized format)
-   - Entity type/category
+### Personal Section
+- Educational affiliations (universities, alumni associations)
+- Charitable organizations and non-profits
+- Cultural/social organizations, foundations
 
-2. **Affiliation Details**
-   - Type of affiliation (e.g., employment, education, board membership)
-   - Status (current/past)
-   - Role or position
-   - Relevant dates (if available)
+**Format for Personal:**
+- Schools/universities: "Graduated from [University Name]" or "Alumni of [School Name]"
+- Charities/Non-profits: "Board member/supporter of [Organization Name]"
+- Cultural organizations: "Member of [Organization Name]"
 
-3. **Expertise Indicators**
-   - Industry sectors
-   - Professional categories
-   - Specialization areas
+### Business Section  
+- Employment history and current roles
+- Professional board memberships and advisory positions
+- Industry organizations and trade groups
+
+**Format for Professional:**
+- Current role: "[Title] at [Firm] ([sectors - both directly noted and assumed from entity description])"
+- Former roles: "Former [Title] at [Firm] ([sectors])"
+- List roles chronologically when possible, newest first
+- Include both explicit sector tags and sectors inferred from entity descriptions
+- Board positions: "Board member at [Company] ([sectors])"
+
+### Investing Section
+- Investment fund affiliations and portfolio companies
+- Angel investor groups and investment-focused board roles
+
+**Format for Investing:**
+- "[Role] at [Fund/Investment Entity] ([asset classes/strategies])"
+- Portfolio company connections: "Portfolio company experience with [Company] ([sectors])"
+
+## Expertise Interpretation
+- **Sector Expertise**: Affiliations indicate expertise in those sectors
+- **Operational Experience**: Employment/leadership roles show hands-on knowledge
+- **Investment Experience**: Fund/portfolio company connections indicate investment expertise
+- **Network Access**: Affiliations suggest potential deal flow and connections
+
+## Priority Information
+1. **Current Leadership Roles**: CEO, Founder, Managing Partner positions
+2. **Board Memberships**: Governance experience and sector expertise
+3. **Prestigious Affiliations**: Well-known companies, top universities, notable organizations
+4. **Sector Clustering**: Multiple affiliations in same industry indicate deep expertise
+5. **Investment Connections**: Fund, portfolio company, or angel group affiliations
 
 ## Processing Instructions
-
-### Priority Information
-1. Focus on current affiliations first
-2. Pay special attention to:
-   - Leadership roles
-   - Industry expertise
-   - Notable organizations
-   - Recurring patterns in sectors/roles
-
-### Insight Generation
-- Identify expertise clusters from multiple affiliations
-- Note progression patterns in career/involvement
-- Connect industry and role patterns
-- Consider both formal roles and advisory positions
-
-### Context Integration
-- Link insights to member's current focus areas
-- Consider how past affiliations influence current interests
-- Look for alignment between affiliations and investment interests
-
-## Data Reliability Notes
-- Data is manually curated following strict SOPs
-- Entity information is verified against official sources
-- URLs and descriptions are standardized
-- Taxonomy is continuously refined for consistency
+- Group sectors from multiple affiliations to identify core expertise areas
+- Note career progression from education through professional roles
+- Consider how affiliations support investment interests and deal sourcing capability
+- Identify networks accessible through various affiliations for introduction potential

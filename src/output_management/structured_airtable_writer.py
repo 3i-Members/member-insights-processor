@@ -172,18 +172,52 @@ class StructuredInsightsAirtableWriter:
         note_content_parts = []
         for section in ['personal', 'business', 'investing', '3i']:
             if section in json_data and json_data[section]:
-                note_content_parts.append(f"**{section.title()}:**\n{json_data[section]}")
+                formatted_content = self._format_markdown_for_airtable(json_data[section])
+                note_content_parts.append(f"**{section.title()}:**\n{formatted_content}")
         
         processed_data['note_content'] = "\n\n".join(note_content_parts)
         
-        # Map deals and introductions directly
+        # Map deals and introductions directly (also format them)
         if 'deals' in json_data and json_data['deals']:
-            processed_data['deals'] = json_data['deals']
+            processed_data['deals'] = self._format_markdown_for_airtable(json_data['deals'])
         
         if 'introductions' in json_data and json_data['introductions']:
-            processed_data['introductions'] = json_data['introductions']
+            processed_data['introductions'] = self._format_markdown_for_airtable(json_data['introductions'])
         
         return processed_data
+    
+    def _format_markdown_for_airtable(self, content: str) -> str:
+        """
+        Format markdown content for better display in Airtable.
+        Converts markdown sub-bullets to proper indentation.
+        
+        Args:
+            content: Markdown content with potential sub-bullets
+            
+        Returns:
+            str: Formatted content for Airtable
+        """
+        if not content:
+            return content
+        
+        lines = content.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            # Check for citation sub-bullets with exact 2-space indentation
+            if line.startswith('  * ['):
+                # This is a citation sub-bullet, format with proper indentation
+                citation_text = line[4:]  # Remove '  * '
+                formatted_lines.append(f"    {citation_text}")
+            elif line.startswith('  *') and not line.startswith('  * ['):
+                # Regular sub-bullet, add indentation
+                sub_bullet_text = line[4:]  # Remove '  * '
+                formatted_lines.append(f"    • {sub_bullet_text}")
+            else:
+                # Keep regular lines as-is
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
     
     def create_note_submission_record(
         self,

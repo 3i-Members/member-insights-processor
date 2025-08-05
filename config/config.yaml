@@ -134,8 +134,8 @@ airtable:
           email: "fldQDs192pHQgLo1F"
 
 # AI Configuration
-# Choose between 'openai' or 'gemini'
-ai_provider: "openai"
+# Choose between 'openai', 'gemini', or 'anthropic'
+ai_provider: "anthropic"
 
 # OpenAI Configuration
 openai:
@@ -179,10 +179,27 @@ gemini:
     # Use default safety settings for now
     enabled: true
 
+# Anthropic Claude Configuration
+anthropic:
+  # Note: Set ANTHROPIC_API_KEY as environment variable for security
+  model_name: "claude-3-5-sonnet-20241022"
+  
+  # Generation settings
+  generation_config:
+    temperature: 0.7
+    max_tokens: 8192
+    top_p: 0.8
+  
+  # Rate limiting and retry settings
+  api_settings:
+    max_retries: 3
+    retry_delay_base: 2  # seconds (exponential backoff)
+    timeout_seconds: 60
+
 # Processing Configuration
 processing:
   # AI Provider selection
-  ai_provider: "openai"  # Choose 'openai' or 'gemini'
+  ai_provider: "anthropic"  # Choose 'openai', 'gemini', or 'anthropic'
   
   # Maximum number of contacts to process in a single batch
   max_batch_size: 100

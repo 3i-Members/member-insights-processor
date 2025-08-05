@@ -21,6 +21,7 @@ from context_management.markdown_reader import create_markdown_reader
 from context_management.processing_filter import create_processing_filter
 from ai_processing.gemini_processor import create_gemini_processor
 from ai_processing.openai_processor import create_openai_processor
+from ai_processing.anthropic_processor import AnthropicProcessor
 from output_management.markdown_writer import create_markdown_writer
 from output_management.airtable_writer import create_airtable_writer
 from output_management.enhanced_airtable_writer import create_enhanced_airtable_writer
@@ -97,13 +98,20 @@ class MemberInsightsProcessor:
             else:
                 logger.warning("No processing filter configured - all records will be processed")
             
-            # Initialize AI processor (OpenAI or Gemini based on configuration)
+            # Initialize AI processor (OpenAI, Gemini, or Anthropic based on configuration)
             ai_provider = self.config_loader.get_ai_provider()
             
             if ai_provider.lower() == 'openai':
                 openai_config = self.config_loader.get_openai_config()
                 self.ai_processor = create_openai_processor(config=openai_config)
                 logger.info("Initialized OpenAI processor")
+            elif ai_provider.lower() == 'anthropic':
+                anthropic_config = self.config_loader.get_anthropic_config()
+                self.ai_processor = AnthropicProcessor(
+                    model_name=anthropic_config.get('model_name', 'claude-3-5-sonnet-20241022'),
+                    generation_config=anthropic_config.get('generation_config', {})
+                )
+                logger.info("Initialized Anthropic processor")
             else:
                 gemini_config = self.config_loader.get_gemini_config()
                 self.ai_processor = create_gemini_processor(config=gemini_config)
@@ -212,7 +220,7 @@ class MemberInsightsProcessor:
     def process_contact(
         self,
         contact_id: str,
-        system_prompt_key: str = "member_summary",
+        system_prompt_key: str = "structured_insight",
         dry_run: bool = False
     ) -> Dict[str, Any]:
         """
@@ -220,7 +228,7 @@ class MemberInsightsProcessor:
         
         Args:
             contact_id: The contact ID to process
-            system_prompt_key: System prompt key to use
+            system_prompt_key: System prompt key to use (only structured_insight supported)
             dry_run: If True, don't save results or update logs
             
         Returns:
@@ -290,174 +298,12 @@ class MemberInsightsProcessor:
             else:
                 logger.debug(f"No processing filter applied - processing all {original_record_count} records")
             
-            # For structured insights, process all ENI groups together for one comprehensive insight
-            if system_prompt_key == "structured_insight":
-                # Process all ENI data together to create one comprehensive structured insight
-                result_data = self._process_combined_structured_insight(
-                    contact_id, contact_data, system_prompt_key, dry_run
-                )
-                result.update(result_data)
-            else:
-                # Group data by ENI source type and subtype for individual processing
-                grouped_data = contact_data.groupby(['eni_source_type', 'eni_source_subtype'])
-                
-                for (eni_source_type, eni_source_subtype), group_data in grouped_data:
-                    try:
-                        logger.info(f"Processing {eni_source_type}/{eni_source_subtype} for contact {contact_id}")
-                        
-                        # Load context for this ENI source type/subtype
-                        context_content = ""
-                        context_file_path = None  # Initialize context_file_path for metadata
-                        context_file_paths = self.config_loader.get_context_file_paths(eni_source_type, eni_source_subtype)
-                        
-                        context_parts = []
-                        context_files_used = []
-                        
-                        # Load default context first
-                        if context_file_paths['default']:
-                            default_content = self.markdown_reader.read_markdown_file(context_file_paths['default'])
-                            if default_content:
-                                context_parts.append(f"=== DEFAULT CONTEXT FOR {eni_source_type.upper()} ===\n{default_content}")
-                                context_files_used.append(context_file_paths['default'])
-                                logger.debug(f"Loaded default context for {eni_source_type}")
-                            else:
-                                logger.warning(f"Failed to load default context file: {context_file_paths['default']}")
-                        
-                        # Load subtype-specific context if available and different from default
-                        if context_file_paths['subtype']:
-                            subtype_content = self.markdown_reader.read_markdown_file(context_file_paths['subtype'])
-                            if subtype_content:
-                                context_parts.append(f"=== SUBTYPE CONTEXT FOR {eni_source_type.upper()}/{eni_source_subtype.upper()} ===\n{subtype_content}")
-                                context_files_used.append(context_file_paths['subtype'])
-                                logger.debug(f"Loaded subtype context for {eni_source_type}/{eni_source_subtype}")
-                            else:
-                                logger.warning(f"Failed to load subtype context file: {context_file_paths['subtype']}")
-                        
-                        # Set context_file_path for metadata (combine multiple files if used)
-                        if context_files_used:
-                            context_file_path = " + ".join(context_files_used)
-                            context_content = "\n\n".join(context_parts)
-                        else:
-                            # Fallback to old method for backward compatibility
-                            context_file_path = self.config_loader.get_context_file_path(eni_source_type, eni_source_subtype)
-                            if context_file_path:
-                                context_content = self.markdown_reader.read_markdown_file(context_file_path)
-                                if not context_content:
-                                    result['errors'].append(f"Failed to load context file: {context_file_path}")
-                                    continue
-                            else:
-                                result['errors'].append(f"No context file configured for {eni_source_type}/{eni_source_subtype}")
-                                continue
-                    
-                        # Process with AI (OpenAI or Gemini)
-                        insights = self.ai_processor.process_single_contact(
-                            contact_data=group_data,
-                            system_prompt_key=system_prompt_key,
-                            context_content=context_content,
-                            config_loader=self.config_loader
-                        )
-                        
-                        if not insights:
-                            result['errors'].append(f"Failed to generate insights for {eni_source_type}/{eni_source_subtype}")
-                            continue
-                    
-                        # Save results if not dry run
-                        if not dry_run:
-                            # Generate ENI ID for this group (use first ENI ID in group)
-                            eni_id = str(group_data.iloc[0]['eni_id'])
-                            member_name = group_data.iloc[0].get('member_name', 'Unknown')
-                            
-                            # Check if we're using structured insights
-                            if system_prompt_key == "structured_insight":
-                                # Save to JSON for structured insights
-                                json_file = self.json_writer.write_structured_insight(
-                                    contact_id=contact_id,
-                                    eni_id=eni_id,
-                                    content=insights,
-                                    member_name=member_name,
-                                    eni_source_type=eni_source_type,
-                                    eni_source_subtype=eni_source_subtype,
-                                    additional_metadata={
-                                        'system_prompt_key': system_prompt_key,
-                                        'context_file': context_file_path,
-                                        'record_count': len(group_data)
-                                    }
-                                )
-                                
-                                if json_file:
-                                    result['files_created'].append(json_file)
-                                
-                                # Sync to structured Airtable if configured
-                                if self.structured_airtable_writer:
-                                    try:
-                                        # Parse the insights as JSON for Airtable sync
-                                        import json
-                                        insights_json = json.loads(insights) if isinstance(insights, str) else insights
-                                        
-                                        sync_result = self.structured_airtable_writer.create_note_submission_record(
-                                            contact_id=contact_id,
-                                            structured_json=insights_json,
-                                            member_name=member_name
-                                        )
-                                        
-                                        if sync_result.success:
-                                            result['airtable_records'].append(sync_result.record_id)
-                                        else:
-                                            result['errors'].append(f"Structured Airtable sync failed: {sync_result.error}")
-                                            
-                                    except Exception as e:
-                                        result['errors'].append(f"Error in structured Airtable sync: {str(e)}")
-                            else:
-                                # Regular markdown processing
-                                markdown_file = self.markdown_writer.write_summary(
-                                    contact_id=contact_id,
-                                    eni_id=eni_id,
-                                    content=insights,
-                                    additional_metadata={
-                                        'eni_source_type': eni_source_type,
-                                        'eni_source_subtype': eni_source_subtype,
-                                        'system_prompt_key': system_prompt_key,
-                                        'context_file': context_file_path,
-                                        'record_count': len(group_data)
-                                    }
-                                )
-                                
-                                if markdown_file:
-                                    result['files_created'].append(markdown_file)
-                                
-                                # Sync to regular Airtable if configured
-                                if self.airtable_writer:
-                                    airtable_config = self.config_loader.get_airtable_config()
-                                    field_mapping = airtable_config.get('field_mapping', {})
-                                    
-                                    if field_mapping:
-                                        record_id = self.airtable_writer.sync_content_directly(
-                                            content=insights,
-                                            contact_id=contact_id,
-                                            eni_id=eni_id,
-                                            field_mapping=field_mapping,
-                                            additional_fields={
-                                                'ENI Source Type': eni_source_type,
-                                                'ENI Source Subtype': eni_source_subtype
-                                            }
-                                        )
-                                        
-                                        if record_id:
-                                            result['airtable_records'].append(record_id)
-                        
-                        # Mark ENI IDs as processed
-                        eni_ids_in_group = group_data['eni_id'].tolist()
-                        self.log_manager.mark_multiple_as_processed(contact_id, eni_ids_in_group)
-                        result['processed_eni_ids'].extend(eni_ids_in_group)
-                        
-                        logger.info(f"Successfully processed {eni_source_type}/{eni_source_subtype} for contact {contact_id}")
-                        
-                    except Exception as e:
-                        error_msg = f"Error processing {eni_source_type}/{eni_source_subtype}: {str(e)}"
-                        result['errors'].append(error_msg)
-                        logger.error(error_msg)
+            # Only process structured insights (removed member summary functionality)
+            result_data = self._process_combined_structured_insight(
+                contact_id, contact_data, system_prompt_key, dry_run
+            )
+            result.update(result_data)
             
-            result['success'] = len(result['errors']) == 0 or len(result['processed_eni_ids']) > 0
             return result
             
         except Exception as e:
@@ -704,10 +550,10 @@ ALL MEMBER DATA TO ANALYZE:
     
     def process_multiple_contacts(
         self,
-        contact_ids: Optional[List[str]] = None,
-        limit: Optional[int] = None,
-        system_prompt_key: str = "member_summary",
-        dry_run: bool = False
+        contact_ids: List[str],
+        system_prompt_key: str = "structured_insight",
+        dry_run: bool = False,
+        max_contacts: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Process multiple contacts.
@@ -864,11 +710,11 @@ def main():
     parser.add_argument("--filter", help="Processing filter file path (overrides default from config)")
     parser.add_argument("--contact-id", help="Process specific contact ID")
     parser.add_argument("--limit", type=int, help="Limit number of contacts to process")
-    parser.add_argument("--system-prompt", default="member_summary", help="System prompt key to use")
+    parser.add_argument("--system-prompt", default="structured_insight", help="System prompt key to use (only structured_insight supported)")
     parser.add_argument("--dry-run", action="store_true", help="Run without saving results")
     parser.add_argument("--validate", action="store_true", help="Only validate setup")
     parser.add_argument("--stats", action="store_true", help="Show processing statistics")
-    parser.add_argument("--clear-logs", action="store_true", help="Clear processed logs")
+    parser.add_argument("--clear-logs", nargs='?', const='all', help="Clear processed logs (optionally specify contact ID, e.g., --clear-logs CNT-123456)")
     parser.add_argument("--airtable-test", action="store_true", help="Test Airtable connection")
     parser.add_argument("--airtable-batch-sync", action="store_true", help="Use enhanced batch sync to Airtable")
     parser.add_argument("--structured-airtable-test", action="store_true", help="Test structured insights Airtable connection")
@@ -906,8 +752,12 @@ def main():
         
         if args.clear_logs:
             # Clear logs
-            success = processor.clear_processed_logs()
-            print(f"Clear logs: {'Success' if success else 'Failed'}")
+            contact_id = None if args.clear_logs == 'all' else args.clear_logs
+            success = processor.clear_processed_logs(contact_id)
+            if contact_id:
+                print(f"Clear logs for {contact_id}: {'Success' if success else 'Failed'}")
+            else:
+                print(f"Clear all logs: {'Success' if success else 'Failed'}")
             return
         
         if args.show_filter:
