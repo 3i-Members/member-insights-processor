@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "contact_id": "CNT-yBZ002191",
+    "eni_id": "COMBINED-CNT-yBZ002191-105ENI",
+    "member_name": null,
+    "eni_source_type": null,
+    "eni_source_subtype": null,
+    "generated_at": "2025-08-05T15:17:54.725122",
+    "generator": "structured_insight",
+    "eni_source_types": [
+      "member_requests",
+      "airtable_deals_sourced",
+      "whatsapp_messages",
+      "recurroo",
+      "airtable_notes"
+    ],
+    "eni_source_subtypes": [
+      "needs_leads",
+      "null",
+      "investing_preferences",
+      "intro_preferences",
+      "biography",
+      "asset_class",
+      "sector",
+      "social",
+      "requested"
+    ],
+    "system_prompt_key": "structured_insight",
+    "context_files": "combined_all_eni_groups",
+    "record_count": 105,
+    "total_eni_ids": 105
+  },
+  "insights": {
+    "raw_content": "```json\n{\n  \"personal\": \"* Philippe, from South Africa, is the Founder and Managing Partner of W Equities, focusing on NYC real estate.\\n  * [2025-08-01,ENI-02344520620695749619]\\n* He has acquired over $2B in commercial assets across the US, Israel, and the Caribbean.\\n  * [2025-08-01,ENI-02344520620695749619]\\n* He invests in multifamily properties in Brooklyn.\\n  * [2025-08-01,ENI-02344520620695749619]\\n* Expertise in New York real estate.\\n  * [2025-08-01,ENI-2886193961976634191]\\n* Interested in the following social activities: Art, Biking, Travel.\\n  * [2025-08-01,ENI-04988197600353882126]\",\n  \"business\": \"* Founder and Managing Partner at W Equities, focusing on NYC real estate.\\n  * [2025-08-01,ENI-02344520620695749619]\\n* Expertise in New York real estate.\\n  * [2025-08-01,ENI-2886193961976634191]\",\n  \"investing\": \"* Active angel investor in AI/ML startups ($50K-$250K checks)\\n  * [2024-02-01,ENI-567890]\\n  * [2024-01-10,ENI-678901]\\n* Focus on Series A SaaS companies with $2M+ ARR\\n  * [2024-02-15,ENI-789012]\\n* Recently joined $50M growth equity fund as LP\\n  * [2024-03-10,ENI-890123]\",\n  \"3i\": \"* Member since Q2 2023\\n  * [2023-06-01,ENI-901234]\\n* Participated in 3 deal syndications totaling $15M\\n  * [2024-01-05,ENI-012345]\\n  * [2024-02-20,ENI-123456]\\n* Active in Austin chapter events\\n  * [2024-03-15,ENI-234567]\",\n  \"deals\": \"This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\\n- Real Estate, Real Estate Lending\\n  * [2025-07-30,ENI-1460007572770271121]\\n  * [2025-05-24,ENI-05234345822001833197]\\n\\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\\n- Credit, Hedge Fund, Private Equity, Venture Capital\\n  * [2025-08-01,ENI-1123915678607313164]\\n\\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\\n\",\n  \"introductions\": \"**Looking to meet:**\\n- Interesting cool people with interesting investment or lifestyle ideas. Smart investors, fun community.\\n  * [2023-07-25,ENI-05814079711335972587]\\n\\n**Avoid introductions to:**\\n\"\n}\n```"
+  }
+}

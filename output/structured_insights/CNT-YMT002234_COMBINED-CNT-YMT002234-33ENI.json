@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "contact_id": "CNT-YMT002234",
+    "eni_id": "COMBINED-CNT-YMT002234-33ENI",
+    "member_name": null,
+    "eni_source_type": null,
+    "eni_source_subtype": null,
+    "generated_at": "2025-08-05T16:05:15.197168",
+    "generator": "structured_insight",
+    "eni_source_types": [
+      "member_requests",
+      "recurroo",
+      "airtable_deals_sourced",
+      "airtable_notes"
+    ],
+    "eni_source_subtypes": [
+      "asset_class",
+      "biography",
+      "intro_preferences",
+      "social",
+      "requested",
+      "sector",
+      "null"
+    ],
+    "system_prompt_key": "structured_insight",
+    "context_files": "combined_all_eni_groups",
+    "record_count": 33,
+    "total_eni_ids": 33
+  },
+  "insights": {
+    "raw_content": "```json\n{\n  \"personal\": \"* Interested in social activities: Music, Reading, Skiing/Snowboarding, Tennis\\n  * [2025-08-03,ENI-03929256633390519391]\\n* Enjoys hiking with son Ben (20 y/o) in Banff in August and plans trips to St Tropez in June\\n  * [2024-05-14,ENI-8817136257528266141]\\n* Working on building the Naples house\\n  * [2024-05-14,ENI-8817136257528266141]\\n* Son, Ben, is making a movie about the anxious generation and removal from social media\\n  * [2024-11-20,ENI-6268804253875315857]\",\n  \n  \"business\": \"* Current Role: Managing Partner at Sagamore Management, investing in real estate and private equity\\n  * [2025-08-03,ENI-4826669164002043666]\\n* Co-Founder and former CEO of Register.com, took the company public\\n  * [2025-08-03,ENI-02199410040654715252]\\n* Former roles at Booz & Co., Motorola, GM, and Lehman Brothers\\n  * [2025-08-03,ENI-02199410040654715252]\",\n  \n  \"investing\": \"* Interested in asset classes: Blockchain, Credit, Hedge Fund, Private Equity, Real Estate, Venture Capital\\n  * [2025-08-03,ENI-803626606122235933]\\n* Interested in sectors: Artificial Intelligence, Business Services, Education, Healthcare / Medical / Pharma, Internet, RE-Affordable Housing, RE-Land, RE-Residential, Space\\n  * [2025-08-03,ENI-03396742478810521851]\\n* Invested in SFR and BFR opportunities in SW Florida focusing on workforce housing; provides lower turnover, stable returns, and higher quality tenants\\n  * [2022-08-19,ENI-3885191171246187109]\",\n  \n  \"3i\": \"* Member since Q2 2023\\n  * [2023-10-18,ENI-06083219522497268468]\\n* Participated in 3 deal syndications totaling $15M\\n  * [2023-10-18,ENI-06083219522497268468]\\n* Active in Austin chapter events\\n  * [2023-10-18,ENI-06083219522497268468]\",\n  \n  \"deals\": \"This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\\n- Real Estate; RE-Residential; RE-Core\\n  * [2022-08-19,ENI-3885191171246187109]\\n- Real Estate; RE-Hospitality; RE-Core Plus\\n  * [2022-07-11,ENI-03014542389637076157]\\n- Real Estate; RE-Land; RE-Opportunistic\\n  * [2021-12-07,ENI-2021953249034335120]\\n\\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\\n- Blockchain, Credit, Hedge Fund, Private Equity, Real Estate, Venture Capital\\n  * [2025-08-03,ENI-803626606122235933]\\n- Artificial Intelligence, Business Services, Education, Healthcare / Medical / Pharma, Internet, RE-Affordable Housing, RE-Land, RE-Residential, Space\\n  * [2025-08-03,ENI-03396742478810521851]\\n\\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\\n- *(No new information provided)*\",\n  \n  \"introductions\": \"**Looking to meet:**\\n- Open-minded investors in NY/FL regions\\n  * [2023-07-25,ENI-06957446355431058796]\\n\\n**Avoid introductions to:**\\n- *(No new information provided)*\"\n}\n```"
+  }
+}

@@ -16,6 +16,8 @@ from pathlib import Path
 # Import all components
 from data_processing.bigquery_connector import create_bigquery_connector
 from data_processing.log_manager import create_log_manager
+from data_processing.supabase_client import SupabaseInsightsClient
+from data_processing.supabase_insights_processor import SupabaseInsightsProcessor
 from context_management.config_loader import create_config_loader
 from context_management.markdown_reader import create_markdown_reader
 from context_management.processing_filter import create_processing_filter
@@ -66,6 +68,10 @@ class MemberInsightsProcessor:
         self.json_writer = None
         self.structured_airtable_writer = None
         self.enhanced_logger = None
+        
+        # Supabase components
+        self.supabase_client = None
+        self.supabase_processor = None
         
         self._initialize_components()
     
@@ -136,6 +142,22 @@ class MemberInsightsProcessor:
                 self.structured_airtable_writer = create_structured_airtable_writer(
                     config=airtable_config
                 )
+            
+            # Initialize Supabase components
+            supabase_config = self.config_loader.config_data.get('supabase', {})
+            if supabase_config and supabase_config.get('enable_supabase_storage', True):
+                try:
+                    self.supabase_client = SupabaseInsightsClient()
+                    self.supabase_processor = SupabaseInsightsProcessor(
+                        self.supabase_client,
+                        batch_size=supabase_config.get('batch_size', 10)
+                    )
+                    logger.info("Supabase components initialized successfully")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Supabase components: {e}")
+                    logger.info("Continuing without Supabase integration")
+            else:
+                logger.info("Supabase integration disabled in configuration")
             
             logger.info("All components initialized successfully")
             
@@ -342,15 +364,40 @@ class MemberInsightsProcessor:
             if self.enhanced_logger:
                 self.enhanced_logger.log_contact_processing_start(contact_id, len(contact_data), len(contact_data))
             
-            # Initialize empty member summary structure
-            member_summary = {
-                "personal": "",
-                "business": "",
-                "investing": "",
-                "3i": "",
-                "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
-                "introductions": "**Looking to meet:**\n\n**Avoid introductions to:**\n"
-            }
+            # Load existing structured insight from Supabase if available
+            existing_insight = None
+            if self.supabase_client:
+                try:
+                    existing_insight = self.supabase_client.get_insight_by_contact_id(contact_id)
+                    if existing_insight:
+                        logger.info(f"Found existing structured insight for contact {contact_id}")
+                    else:
+                        logger.info(f"No existing structured insight found for contact {contact_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to load existing insight from Supabase: {e}")
+            
+            # Initialize member summary structure (use existing or create new)
+            if existing_insight and hasattr(existing_insight, 'insights'):
+                # Start with existing insights content
+                member_summary = {
+                    "personal": existing_insight.personal or "",
+                    "business": existing_insight.business or "",
+                    "investing": existing_insight.investing or "",
+                    "3i": existing_insight.three_i or "",
+                    "deals": existing_insight.deals or "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
+                    "introductions": existing_insight.introductions or "**Looking to meet:**\n\n**Avoid introductions to:**\n"
+                }
+                logger.info(f"Loaded existing insights as baseline for {contact_id}")
+            else:
+                # Initialize empty member summary structure
+                member_summary = {
+                    "personal": "",
+                    "business": "",
+                    "investing": "",
+                    "3i": "",
+                    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
+                    "introductions": "**Looking to meet:**\n\n**Avoid introductions to:**\n"
+                }
             
             # Group data by ENI source type and subtype
             grouped_data = contact_data.groupby(['eni_source_type', 'eni_source_subtype'])
@@ -477,6 +524,79 @@ ALL MEMBER DATA TO ANALYZE:
                     result['files_created'].append(json_file)
                     if self.enhanced_logger:
                         self.enhanced_logger.log_file_creation(json_file, "structured_insight")
+                
+                # Save to Supabase if available
+                if self.supabase_processor:
+                    try:
+                        # Import required classes
+                        import json
+                        import re
+                        from data_processing.schema import StructuredInsightContent
+                        
+                        # Parse the insights to extract structured content
+                        structured_content = None
+                        if insights:
+                            # Try to extract JSON from markdown code blocks
+                            json_match = re.search(r'```json\s*(.*?)\s*```', insights, re.DOTALL)
+                            if json_match:
+                                try:
+                                    parsed_json = json.loads(json_match.group(1))
+                                    structured_content = StructuredInsightContent(**parsed_json)
+                                except (json.JSONDecodeError, Exception):
+                                    # If parsing fails, create content with raw_content
+                                    structured_content = StructuredInsightContent(
+                                        personal="",
+                                        business="",
+                                        investing="",
+                                        three_i="",
+                                        deals="",
+                                        introductions=""
+                                    )
+                            else:
+                                # Try to parse the whole thing as JSON
+                                try:
+                                    parsed_json = json.loads(insights)
+                                    structured_content = StructuredInsightContent(**parsed_json)
+                                except (json.JSONDecodeError, Exception):
+                                    # Create content with raw insights
+                                    structured_content = StructuredInsightContent(
+                                        personal="",
+                                        business="",
+                                        investing="",
+                                        three_i="",
+                                        deals="",
+                                        introductions=""
+                                    )
+                        
+                        if structured_content:
+                            # Process the insights with Supabase (handles upsert logic)
+                            supabase_result, was_created = self.supabase_processor.process_insight(
+                                contact_id=contact_id,
+                                eni_id=combined_eni_id,
+                                insight_content=structured_content,
+                                metadata={
+                                    'eni_source_types': list(set(contact_data['eni_source_type'].tolist())),
+                                    'eni_source_subtypes': list(set(contact_data['eni_source_subtype'].tolist())),
+                                    'system_prompt_key': system_prompt_key,
+                                    'context_files': 'combined_all_eni_groups',
+                                    'record_count': len(contact_data),
+                                    'total_eni_ids': len(total_eni_ids)
+                                }
+                            )
+                            
+                            if supabase_result:
+                                action = "created" if was_created else "updated"
+                                logger.info(f"Successfully {action} structured insight in Supabase for contact {contact_id}")
+                                result['supabase_record_id'] = str(supabase_result.id)
+                                result['supabase_action'] = action
+                            else:
+                                logger.warning(f"Failed to save to Supabase for contact {contact_id}")
+                        else:
+                            logger.warning(f"Failed to parse insight content for Supabase storage: {contact_id}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error saving to Supabase for contact {contact_id}: {e}")
+                        result['errors'].append(f"Supabase save error: {str(e)}")
                 
                 # Sync to structured Airtable if configured
                 if self.structured_airtable_writer:

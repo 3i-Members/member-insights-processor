@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "contact_id": "CNT-SIB007487",
+    "eni_id": "COMBINED-CNT-SIB007487-27ENI",
+    "member_name": null,
+    "eni_source_type": null,
+    "eni_source_subtype": null,
+    "generated_at": "2025-08-05T20:02:36.663209",
+    "generator": "structured_insight",
+    "eni_source_types": [
+      "recurroo",
+      "member_requests",
+      "whatsapp_messages",
+      "airtable_deals_sourced",
+      "airtable_notes"
+    ],
+    "eni_source_subtypes": [
+      "null",
+      "biography",
+      "intro_preferences",
+      "needs_leads",
+      "asset_class",
+      "social",
+      "investing_preferences",
+      "requested",
+      "sector"
+    ],
+    "system_prompt_key": "structured_insight",
+    "context_files": "combined_all_eni_groups",
+    "record_count": 27,
+    "total_eni_ids": 27
+  },
+  "insights": {
+    "raw_content": "I'll analyze the data and generate a comprehensive member summary following the specified format, with a focus on maximum specificity and proper citation formatting.\n\n```json\n{\n  \"personal\": \"* Enjoys art, music, reading, and tennis\\n  * [2025-07-24,ENI-08897236649004301215]\\n* Has two sons:\\n  * Jonas - Engineering student at GW (mechanical/aerospace)\\n    * [2025-01-05,ENI-4945962051917257242]\\n  * James - Brown University graduate (Neuroscience), former Chief of Staff at SixPoint Media\\n    * [2025-07-18,ENI-5336350974513876149]\\n* Spends summers in Jersey Shore (near Atlantic City)\\n  * [2025-06-13,ENI-05886918746314993765]\",\n\n  \"business\": \"* Founder and Director of Museum of Sex\\n  * Current locations in NYC (5th Ave/27th St) and Miami\\n  * Self-funded Miami expansion + bank financing\\n  * Property purchased for $6.5M, now valued at $12.5M\\n  * Targeting 2,200 visitors/day in Miami location\\n  * Planning global expansion to multiple cities within 3-5 years\\n    * [2025-03-04,ENI-06562161260414537929]\\n    * [2025-07-24,ENI-4080695791917008702]\\n* Serial entrepreneur background:\\n  * Previous ventures in tech and real estate development\\n  * Founded tech venture that raised $2M (social networking/mindedness platform)\\n  * Developed early online job placement service in 90s (acquired)\\n    * [2024-11-18,ENI-06346331868779428564]\",\n\n  \"investing\": \"* Active investor across multiple asset classes:\\n  * Commercial real estate with focus on entertainment/hospitality venues\\n  * Location-based entertainment businesses (high margin)\\n  * Experiential hospitality projects\\n    * [2024-11-18,ENI-731248866062023042]\\n* Current investment interests:\\n  * Blockchain/crypto technologies\\n  * Private equity opportunities\\n  * Venture capital (particularly in tech/fintech)\\n  * Real estate (industrial, mixed-use, office)\\n    * [2025-07-24,ENI-7308351532574355580]\\n* Sector focus:\\n  * Art/Music/Entertainment\\n  * Artificial Intelligence\\n  * FinTech\\n  * Software/SaaS\\n  * Real Estate (Industrial/Mixed-Use/Office)\\n    * [2025-07-24,ENI-06685303753370627733]\",\n\n  \"3i\": \"* Actively seeking connections with:\\n  * Real estate investors focused on up-and-coming neighborhoods\\n  * Entertainment/hospitality operators\\n  * Cultural business executives\\n    * [2025-03-28,ENI-1355652135150399794]\\n* Proposed creation of cultural/entertainment operator forum within 3i\\n  * Target: 5-10 founding members\\n  * Focus on active owners/operators\\n  * Monthly meetings + dedicated communication channel\\n    * [2025-06-06,ENI-06734167623792307455]\",\n\n  \"deals\": \"This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\\n- Commercial Real Estate (entertainment/hospitality focus)\\n  * [2024-11-18,ENI-731248866062023042]\\n- Location-based entertainment businesses\\n  * [2024-11-18,ENI-731248866062023042]\\n- Experiential hospitality ventures\\n  * [2024-11-18,ENI-731248866062023042]\\n\\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\\n- Real Estate (industrial, mixed-use, office)\\n  * [2025-07-24,ENI-06685303753370627733]\\n- Tech/SaaS companies\\n  * [2025-07-24,ENI-06685303753370627733]\\n- Blockchain/Crypto opportunities\\n  * [2025-07-24,ENI-7308351532574355580]\\n- Fintech ventures\\n  * [2025-07-24,ENI-06685303753370627733]\\n\\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\\n- No specific avoidances noted\\n  * [2024-11-18,ENI-731248866062023042]\",\n\n  \"introductions\": \"**Looking to meet:**\\n- Real estate investors focused on gentrifying neighborhoods in South Florida\\n  * [2025-06-13,ENI-05886918746314993765]\\n- Entertainment and cultural business operators\\n  * [2025-03-28,ENI-1355652135150399794]\\n- Experiential business operators with scaling experience\\n  * [2025-02-18,ENI-8066072001344945681]\\n\\n**Avoid introductions to:**\\n- No specific avoidances noted\\n  * [2024-11-18,ENI-731248866062023042]\"\n}\n```\n\nThe summary has been updated with all relevant information from the provided data sources, maintaining maximum specificity and including proper citations for each data point. The structure follows the required format with bullet points and proper markdown formatting. Each section focuses on actionable, specific information relevant to the member's role in the private investor network."
+  }
+}

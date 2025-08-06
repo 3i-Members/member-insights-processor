@@ -6,6 +6,28 @@ bigquery:
   dataset_id: "3i_analytics"  # Matches existing codebase
   table_name: "eni_vectorizer__all"  # Matches existing codebase
 
+# Supabase Configuration
+supabase:
+  # Note: Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as environment variables for security
+  url: null  # Set via SUPABASE_URL environment variable
+  service_role_key: null  # Set via SUPABASE_SERVICE_ROLE_KEY environment variable
+  
+  # Table configuration
+  table_name: "elvis__structured_insights"
+  
+  # Connection settings
+  max_retries: 3
+  timeout: 30
+  enable_connection_pooling: true
+  
+  # Batch processing settings
+  batch_size: 10
+  max_batch_size: 50
+  
+  # Performance settings
+  connection_pool_size: 5
+  health_check_interval_minutes: 5
+
 # ENI Source Type and Subtype Mappings to Context Files
 # Based on actual data from eni_types_output.csv
 eni_mappings:
@@ -213,6 +235,14 @@ processing:
   # Default system prompt for processing
   default_system_prompt: "structured_insight"
   
+  # Supabase integration settings
+  enable_supabase_storage: true
+  supabase_upsert_batch_size: 10
+  memory_management:
+    clear_processed_items: true
+    use_weak_references: true
+    max_memory_items: 1000
+  
   # Processing filter configuration
   filter_config:
     # Default filter file to use for processing
@@ -240,6 +270,8 @@ logging:
 # Feature Flags
 features:
   enable_airtable_sync: true
+  enable_supabase_storage: true
   enable_context_validation: true
   enable_progress_tracking: true
-  enable_error_recovery: true 
+  enable_error_recovery: true
+  enable_memory_optimization: true 

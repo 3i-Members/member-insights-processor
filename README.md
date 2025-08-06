@@ -1,15 +1,16 @@
 # Member Insights Processor
 
-An AI-powered system that processes member data from BigQuery, generates insights using Google's Gemini Pro, and syncs results to Airtable. The system intelligently processes member data based on ENI types, applies contextual understanding from markdown files, and maintains processing logs for efficiency.
+An AI-powered system that processes member data from BigQuery, generates insights using Claude/Gemini/OpenAI, and stores structured insights in Supabase for scalable, memory-efficient processing. The system features intelligent upsert logic, decoupled Airtable syncing, and Docker-optimized performance.
 
 ## Features
 
 - 🔍 **Intelligent Data Processing**: Loads member data from BigQuery with smart filtering to avoid reprocessing
-- 🤖 **AI-Powered Insights**: Uses Google Gemini Pro to generate comprehensive member summaries and insights
+- 🤖 **Multi-AI Support**: Uses Claude, Gemini Pro, or OpenAI to generate comprehensive member insights
 - 📁 **Contextual Analysis**: Applies domain-specific context based on ENI types and subtypes
-- 📝 **Markdown Output**: Saves AI-generated insights as structured markdown files with metadata
-- 🔄 **Airtable Integration**: Automatically syncs results to Airtable for easy access and management
-- 📊 **Processing Logs**: Maintains detailed logs to prevent duplicate processing and track progress
+- 💾 **Supabase Storage**: Scalable PostgreSQL JSONB storage for structured insights with intelligent upsert logic
+- 🔄 **Decoupled Airtable Sync**: Independent Airtable syncing that pulls from Supabase on-demand
+- 📊 **Memory Optimization**: Docker-optimized with efficient memory management for large datasets
+- 🔀 **Smart Merging**: Automatically merges new data with existing insights using advanced processing logic
 - ⚙️ **Configurable Pipeline**: Flexible configuration system for different ENI mappings and prompts
 
 ## Architecture
@@ -17,16 +18,24 @@ An AI-powered system that processes member data from BigQuery, generates insight
 ```
 member-insights-processor/
 ├── src/
-│   ├── data_processing/          # BigQuery integration and log management
+│   ├── data_processing/          # BigQuery, Supabase integration and log management
+│   │   ├── supabase_client.py    # Supabase database operations
+│   │   ├── supabase_insights_processor.py  # Core Supabase processing logic
+│   │   └── schema.py             # Pydantic data models and validation
 │   ├── context_management/       # Configuration and markdown reading
-│   ├── ai_processing/           # Gemini Pro integration
-│   ├── output_management/       # Markdown and Airtable writing
+│   ├── ai_processing/           # Claude, Gemini Pro, OpenAI integration
+│   ├── output_management/       # Markdown, JSON, and Airtable writing
+│   │   └── supabase_airtable_writer.py  # Decoupled Airtable sync from Supabase
 │   └── main.py                  # Main processing pipeline
 ├── config/                      # Configuration files
+│   └── supabase_schema.sql      # Database schema for Supabase
 ├── context/                     # ENI-specific context files
-├── output/                      # Generated markdown summaries
+├── output/                      # Generated summaries and insights
 ├── logs/                        # Processing logs
-└── tests/                       # Unit tests
+├── scripts/                     # Setup and migration utilities
+├── tests/                       # Comprehensive test suite
+├── SUPABASE_INTEGRATION.md      # Detailed Supabase setup guide
+└── README.md                    # This file
 ```
 
 ## Installation
@@ -47,7 +56,20 @@ member-insights-processor/
    # Google Cloud credentials for BigQuery
    export GOOGLE_APPLICATION_CREDENTIALS="path/to/your/bigquery-credentials.json"
    
-   # Gemini API key
+   # AI API keys (choose your preferred provider)
+   export ANTHROPIC_API_KEY="your-anthropic-api-key"    # For Claude
+   export GOOGLE_API_KEY="your-google-api-key"          # For Gemini
+   export OPENAI_API_KEY="your-openai-api-key"          # For OpenAI
+   
+   # Supabase configuration
+   export SUPABASE_URL="your-supabase-project-url"
+   export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+   
+   # Airtable configuration (optional)
+   export AIRTABLE_API_KEY="your-airtable-api-key"
+   export AIRTABLE_BASE_ID="your-base-id"
+   
+   # Legacy Gemini setup
    export GEMINI_API_KEY="your-gemini-api-key"
    
    # Airtable credentials (optional)
@@ -88,6 +110,62 @@ python src/main.py --limit 5 --dry-run
 ```bash
 python src/main.py --stats
 ```
+
+## Supabase Integration
+
+This system now features **full Supabase integration** for scalable, memory-efficient processing:
+
+### 🗄️ **Database Setup**
+
+1. **Create Supabase Table**
+   ```sql
+   -- Run this SQL in your Supabase SQL Editor
+   -- See config/supabase_schema.sql for the complete schema
+   ```
+
+2. **Validate Supabase Connection**
+   ```bash
+   python scripts/setup_supabase.py --validate
+   ```
+
+3. **Migrate Existing Data** (Optional)
+   ```bash
+   # Migrate existing JSON files to Supabase
+   python scripts/setup_supabase.py --migrate --dry-run
+   python scripts/setup_supabase.py --migrate  # Actually migrate
+   ```
+
+### 🔄 **Processing Workflow**
+
+The system now uses **intelligent upsert logic**:
+
+1. **Load existing insights** from Supabase before processing
+2. **Merge new data** with existing insights automatically  
+3. **Save to Supabase** with PostgreSQL JSONB for fast queries
+4. **Sync to Airtable** independently using decoupled service
+
+### 🎯 **Decoupled Airtable Sync**
+
+Test the new Airtable sync that pulls from Supabase:
+
+```bash
+# Test Supabase-powered Airtable sync for specific contact
+python test_airtable_sync.py
+
+# This will:
+# 1. Pull structured insight from Supabase
+# 2. Sync to Airtable on-demand
+# 3. Only process specified contact IDs (no database flooding)
+```
+
+### 📊 **Memory Benefits**
+
+- ✅ **No local file bottlenecks** - structured insights stored in Supabase
+- ✅ **Docker optimized** - reduced memory footprint for containers
+- ✅ **Batch processing** - configurable batch sizes for large datasets
+- ✅ **Smart caching** - only loads existing data when needed
+
+For detailed setup instructions, see **[SUPABASE_INTEGRATION.md](./SUPABASE_INTEGRATION.md)**.
 
 ## Configuration
 
@@ -179,22 +257,32 @@ print(f"Total processed contacts: {stats['log_statistics']['total_contacts']}")
 - Maps ENI types to context files
 - Handles system prompt configurations
 
-### 3. Gemini Processor
-- Integrates with Google Gemini Pro API
+### 3. Multi-AI Processor
+- Supports Claude (Anthropic), Gemini Pro, and OpenAI
 - Processes member data with AI insights
-- Supports custom system prompts and context
+- Configurable AI provider selection
 
-### 4. Markdown Writer
-- Creates structured markdown files
-- Includes YAML front matter metadata
-- Organizes output by contact and ENI ID
+### 4. Supabase Client
+- **NEW**: PostgreSQL JSONB storage for structured insights
+- Intelligent upsert logic with automatic merging
+- Comprehensive CRUD operations with retry logic
 
-### 5. Airtable Writer
-- Syncs data to Airtable automatically
-- Handles create/update logic
-- Supports custom field mappings
+### 5. Supabase Insights Processor
+- **NEW**: Memory-efficient processing pipeline
+- Loads existing insights before processing new data
+- Batch processing with configurable memory management
 
-### 6. Log Manager
+### 6. Decoupled Airtable Writer
+- **UPDATED**: Pulls data from Supabase independently
+- Contact-specific syncing (no database flooding)
+- Supports both legacy and Supabase-powered workflows
+
+### 7. Schema & Validation
+- **NEW**: Pydantic v2 data models with comprehensive validation
+- Type-safe insight processing with automatic serialization
+- Migration utilities for existing data
+
+### 8. Log Manager
 - Tracks processed ENI IDs
 - Prevents duplicate processing
 - Thread-safe file operations
