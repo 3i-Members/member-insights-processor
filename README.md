@@ -46,46 +46,78 @@ member-insights-processor/
    cd member-insights-processor
    ```
 
-2. **Install dependencies**
+2. **Set up Python virtual environment**
    ```bash
+   # Create virtual environment
+   python3 -m venv venv
+   
+   # Activate virtual environment
+   # On macOS/Linux:
+   source venv/bin/activate
+   # On Windows:
+   # venv\Scripts\activate
+   
+   # Verify activation (you should see (venv) in your prompt)
+   which python  # Should point to venv/bin/python
+   ```
+
+3. **Install dependencies**
+   ```bash
+   # Make sure virtual environment is activated
    pip install -r requirements.txt
    ```
 
-3. **Set up environment variables**
+4. **Set up environment variables with .env file**
+   
+   Create a `.env` file in the project root directory:
    ```bash
+   # Create .env file
+   touch .env
+   ```
+   
+   Add the following configuration to your `.env` file:
+   ```env
    # Google Cloud credentials for BigQuery
-   export GOOGLE_APPLICATION_CREDENTIALS="path/to/your/bigquery-credentials.json"
+   GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/bigquery-credentials.json"
    
    # AI API keys (choose your preferred provider)
-   export ANTHROPIC_API_KEY="your-anthropic-api-key"    # For Claude
-   export GOOGLE_API_KEY="your-google-api-key"          # For Gemini
-   export OPENAI_API_KEY="your-openai-api-key"          # For OpenAI
+   ANTHROPIC_API_KEY="your-anthropic-api-key"    # For Claude (recommended)
+   GEMINI_API_KEY="your-gemini-api-key"          # For Gemini
+   GOOGLE_API_KEY="your-google-api-key"          # Alternative Gemini key
+   OPENAI_API_KEY="your-openai-api-key"          # For OpenAI
    
-   # Supabase configuration
-   export SUPABASE_URL="your-supabase-project-url"
-   export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+   # Supabase configuration (required)
+   SUPABASE_URL="your-supabase-project-url"
+   SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
    
    # Airtable configuration (optional)
-   export AIRTABLE_API_KEY="your-airtable-api-key"
-   export AIRTABLE_BASE_ID="your-base-id"
-   
-   # Legacy Gemini setup
-   export GEMINI_API_KEY="your-gemini-api-key"
-   
-   # Airtable credentials (optional)
-   export AIRTABLE_API_KEY="your-airtable-api-key"
-   export AIRTABLE_BASE_ID="your-base-id"
-   export AIRTABLE_TABLE_NAME="your-table-name"
+   AIRTABLE_API_KEY="your-airtable-api-key"
+   AIRTABLE_BASE_ID="your-base-id"
+   AIRTABLE_TABLE_NAME="your-table-name"
    ```
+   
+   **Important Notes:**
+   - The system automatically loads the `.env` file when you run any command
+   - No need to manually export environment variables
+   - Keep your `.env` file secure and never commit it to version control
+   - The `.env` file should be in the same directory as this README
 
-4. **Configure the system**
+5. **Configure the system**
    ```bash
-   # Edit the configuration file
-   cp config/config.yaml.example config/config.yaml
-   # Update with your specific settings
+   # The config.yaml file is already configured with sensible defaults
+   # You can customize it if needed, but it should work out of the box
    ```
 
 ## Quick Start
+
+**Important:** Always activate your virtual environment before running any commands:
+```bash
+# Activate virtual environment
+source venv/bin/activate  # On macOS/Linux
+# venv\Scripts\activate   # On Windows
+
+# You should see (venv) in your terminal prompt
+```
 
 ### 1. Validate Setup
 ```bash
@@ -94,6 +126,10 @@ python src/main.py --validate
 
 ### 2. Process a Single Contact
 ```bash
+# Process one contact (system will pick the next available)
+python src/main.py --limit 1
+
+# Process a specific contact by ID
 python src/main.py --contact-id "CONTACT_123"
 ```
 
@@ -109,6 +145,11 @@ python src/main.py --limit 5 --dry-run
 ### 4. Check Processing Statistics
 ```bash
 python src/main.py --stats
+```
+
+### 5. Deactivate Virtual Environment (when done)
+```bash
+deactivate
 ```
 
 ## Supabase Integration
@@ -391,6 +432,75 @@ The system includes robust error handling:
 - **File Permissions**: Proper file access controls
 - **API Security**: Secure API key management
 - **Data Privacy**: Respects member data privacy and GDPR compliance
+
+## Troubleshooting
+
+### Virtual Environment Issues
+
+**Problem**: `python: command not found` or wrong Python version
+```bash
+# Solution: Make sure virtual environment is activated
+source venv/bin/activate
+which python  # Should show venv/bin/python
+```
+
+**Problem**: `ModuleNotFoundError` when running the application
+```bash
+# Solution: Install dependencies in virtual environment
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Environment Variables Issues
+
+**Problem**: `Anthropic API key not provided` or similar API key errors
+```bash
+# Solution: Check your .env file exists and has correct format
+ls -la .env  # Should show the file
+cat .env     # Check contents (be careful not to expose keys publicly)
+
+# Ensure no 'export' statements in .env file
+# Correct:   ANTHROPIC_API_KEY="your-key"
+# Incorrect: export ANTHROPIC_API_KEY="your-key"
+```
+
+**Problem**: `AIRTABLE_BASE_ID` or `AIRTABLE_TABLE_NAME` missing warnings
+```bash
+# Solution: Add missing variables to .env file or ignore if not using Airtable
+echo 'AIRTABLE_BASE_ID="your-base-id"' >> .env
+echo 'AIRTABLE_TABLE_NAME="your-table-name"' >> .env
+```
+
+### Validation Issues
+
+**Problem**: Validation shows warnings or failures
+```bash
+# Run validation to see specific issues
+python src/main.py --validate
+
+# Common solutions:
+# 1. Check BigQuery credentials path in .env
+# 2. Verify API keys are valid and have proper permissions
+# 3. Confirm Supabase URL and service role key are correct
+```
+
+### Performance Issues
+
+**Problem**: Processing is slow or timing out
+```bash
+# Solution: Process smaller batches
+python src/main.py --limit 1  # Start with one contact
+python src/main.py --limit 5  # Then try small batches
+```
+
+### File Permission Issues
+
+**Problem**: Cannot write to output directory
+```bash
+# Solution: Check and fix permissions
+chmod 755 output/
+mkdir -p output/structured_insights
+```
 
 ## Testing
 

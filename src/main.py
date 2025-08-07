@@ -12,6 +12,19 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+env_path = Path(__file__).parent.parent / ".env"
+if not env_path.exists():
+    # Try parent directory
+    env_path = Path(__file__).parent.parent.parent / ".env"
+
+if env_path.exists():
+    load_dotenv(env_path)
+    print(f"✅ Loaded environment variables from: {env_path}")
+else:
+    print("⚠️  No .env file found, using system environment variables")
 
 # Import all components
 from data_processing.bigquery_connector import create_bigquery_connector
@@ -200,15 +213,22 @@ class MemberInsightsProcessor:
                 report['issues'].append("BigQuery connector not initialized")
                 report['valid'] = False
             
-            # Validate Gemini processor
-            if self.ai_processor: # Changed from self.gemini_processor to self.ai_processor
-                gemini_info = self.ai_processor.get_model_info() # Changed from self.gemini_processor to self.ai_processor
-                report['component_status']['gemini'] = gemini_info
-                if not gemini_info.get('connection_test', False):
-                    report['warnings'].append("Gemini API connection test failed")
+            # Validate Gemini processor (if Gemini API key is available)
+            gemini_api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+            if gemini_api_key:
+                try:
+                    from ai_processing.gemini_processor import create_gemini_processor
+                    gemini_test_processor = create_gemini_processor()
+                    gemini_info = gemini_test_processor.get_model_info()
+                    report['component_status']['gemini'] = gemini_info
+                    if not gemini_info.get('connection_test', False):
+                        report['warnings'].append("Gemini API connection test failed")
+                except Exception as e:
+                    report['warnings'].append(f"Gemini API connection test failed: {str(e)}")
+                    report['component_status']['gemini'] = {'error': str(e), 'connection_test': False}
             else:
-                report['issues'].append("Gemini processor not initialized")
-                report['valid'] = False
+                report['component_status']['gemini'] = {'connection_test': False, 'api_configured': False}
+                report['warnings'].append("Gemini API key not configured")
             
             # Validate context structure
             if self.markdown_reader:
@@ -225,11 +245,34 @@ class MemberInsightsProcessor:
                     report['issues'].extend(output_validation['issues'])
             
             # Validate Airtable (if configured)
-            if self.airtable_writer:
-                airtable_info = self.airtable_writer.get_table_info()
-                report['component_status']['airtable'] = airtable_info
-                if not airtable_info.get('connection_test', False):
-                    report['warnings'].append("Airtable connection test failed")
+            airtable_api_key = os.environ.get('AIRTABLE_API_KEY')
+            airtable_base_id = os.environ.get('AIRTABLE_BASE_ID')
+            airtable_table_name = os.environ.get('AIRTABLE_TABLE_NAME')
+            
+            if airtable_api_key and airtable_base_id and airtable_table_name:
+                if self.airtable_writer:
+                    airtable_info = self.airtable_writer.get_table_info()
+                    report['component_status']['airtable'] = airtable_info
+                    if not airtable_info.get('connection_test', False):
+                        report['warnings'].append("Airtable connection test failed")
+                else:
+                    report['warnings'].append("Airtable writer not initialized despite having credentials")
+            elif airtable_api_key:
+                report['component_status']['airtable'] = {
+                    'api_configured': True,
+                    'connection_test': False,
+                    'missing_config': []
+                }
+                missing = []
+                if not airtable_base_id:
+                    missing.append('AIRTABLE_BASE_ID')
+                if not airtable_table_name:
+                    missing.append('AIRTABLE_TABLE_NAME')
+                report['component_status']['airtable']['missing_config'] = missing
+                report['warnings'].append(f"Airtable partially configured - missing: {', '.join(missing)}")
+            else:
+                report['component_status']['airtable'] = {'api_configured': False, 'connection_test': False}
+                report['warnings'].append("Airtable API key not configured")
             
             logger.info(f"Setup validation complete: {len(report['issues'])} issues, {len(report['warnings'])} warnings")
             return report
@@ -709,9 +752,9 @@ ALL MEMBER DATA TO ANALYZE:
             
             # Get contact IDs to process
             if contact_ids is None:
-                contact_ids = self.bigquery_connector.get_unique_contact_ids(limit=limit)
-            elif limit:
-                contact_ids = contact_ids[:limit]
+                contact_ids = self.bigquery_connector.get_unique_contact_ids(limit=max_contacts)
+            elif max_contacts:
+                contact_ids = contact_ids[:max_contacts]
             
             summary['total_contacts'] = len(contact_ids)
             logger.info(f"Starting processing of {len(contact_ids)} contacts")
@@ -952,8 +995,15 @@ def main():
             print(f"Errors: {len(result['errors'])}")
         else:
             # Process multiple contacts
+            # Ensure BigQuery connection first
+            if not processor.bigquery_connector.connect():
+                print("❌ Failed to connect to BigQuery")
+                return
+            
+            # First get contact IDs with limit
+            contact_ids = processor.bigquery_connector.get_unique_contact_ids(limit=args.limit)
             result = processor.process_multiple_contacts(
-                limit=args.limit,
+                contact_ids=contact_ids,
                 system_prompt_key=args.system_prompt,
                 dry_run=args.dry_run
             )
