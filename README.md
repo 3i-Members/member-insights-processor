@@ -124,14 +124,24 @@ source venv/bin/activate  # On macOS/Linux
 python src/main.py --validate
 ```
 
-### 2. Process a Single Contact
+### 2. Process a Single Contact (SQL-first, per-type iteration)
 ```bash
-# Process one contact (system will pick the next available)
+# Process one contact (SQL filters applied; per ENI type/subtype queries)
 python src/main.py --limit 1
 
 # Process a specific contact by ID
 python src/main.py --contact-id "CONTACT_123"
 ```
+
+Behavior:
+- For each contact, the system builds combinations from `config/processing_filters.yaml`:
+  - Always includes `(eni_source_type, NULL)` first
+  - Then includes any explicit subtypes listed for that type
+- For each combination, it runs one BigQuery query which:
+  - LEFT JOINs to `elvis.eni_processing_log` and filters `epl.eni_id IS NULL`
+  - Filters by `contact_id`, `eni_source_type`, and optional `eni_source_subtype`
+- Results are concatenated and passed to AI processing
+- After processing, all ENI IDs are batch-marked as processed in BigQuery
 
 ### 3. Process Multiple Contacts
 ```bash
@@ -223,7 +233,7 @@ The system uses a YAML configuration file (`config/config.yaml`) to define:
 bigquery:
   project_id: "your-project-id"
   dataset_id: "your-dataset-id"
-  table_name: "eni__vectorizer_all"
+  table_name: "eni_vectorizer__all"
 
 eni_mappings:
   professional:
@@ -290,8 +300,9 @@ print(f"Total processed contacts: {stats['log_statistics']['total_contacts']}")
 
 ### 1. BigQuery Connector
 - Connects to Google BigQuery
-- Loads contact data with filtering
-- Prevents reprocessing of already handled records
+- SQL-first filtering: queries per `(eni_source_type, eni_source_subtype)` with LEFT JOIN to processing log to exclude already processed ENIs
+- Always processes `eni_source_subtype IS NULL` first, then explicit subtypes from `config/processing_filters.yaml`
+- Prevents reprocessing of already handled records via `elvis.eni_processing_log`
 
 ### 2. Configuration Loader
 - Manages YAML configuration files
@@ -323,10 +334,13 @@ print(f"Total processed contacts: {stats['log_statistics']['total_contacts']}")
 - Type-safe insight processing with automatic serialization
 - Migration utilities for existing data
 
-### 8. Log Manager
-- Tracks processed ENI IDs
-- Prevents duplicate processing
-- Thread-safe file operations
+### 8. Processing Log (BigQuery)
+- Tracks processed ENI IDs in BigQuery table `elvis.eni_processing_log`
+- Excludes already processed items directly in SQL (warehouse-side)
+- Batch and single-record marking supported
+
+### 9. Legacy Local Log Manager (deprecated)
+- Previously tracked processed ENI IDs locally; replaced by BigQuery processing log
 
 ## Context Files
 
@@ -510,6 +524,12 @@ pytest tests/
 
 # Run with coverage
 pytest tests/ --cov=src/
+
+# Run BigQuery processing filters integration test (logs per combination)
+python tests/test_processing_filters.py --contact-id CNT-HvA002554 --verbose
+
+# Or use the runner script
+python scripts/run_processing_filters_test.py CNT-HvA002554
 
 # Run specific test module
 pytest tests/test_bigquery_connector.py
