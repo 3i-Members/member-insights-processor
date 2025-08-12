@@ -10,6 +10,12 @@ This directory contains comprehensive tests for the Member Insights Processor sy
 - **`test_with_env.py`** - Integration tests that require environment variables and external connections
 - **`test_null_handling.py`** - Comprehensive tests for null ENI subtype handling
 - **`test_structured_insights.py`** - Tests for structured insights JSON processing and Airtable integration
+- **`test_processing_filters.py`** - BigQuery processing filters integration tests with real data
+- **`test_airtable_sync.py`** - Airtable synchronization integration tests
+- **`test_main_integration.py`** - End-to-end main processing pipeline tests
+- **`test_single_contact.py`** - Single contact processing tests
+- **`test_supabase_upload.py`** - Supabase upload and integration tests
+- **`simple_upload_test.py`** - Simple upload functionality tests
 - **`test_runner.py`** - Main test runner with colored output and reporting
 
 ### Test Categories
@@ -24,6 +30,7 @@ This directory contains comprehensive tests for the Member Insights Processor sy
 #### Integration Tests  
 - Environment variable validation
 - BigQuery connectivity
+- BigQuery processing filters with real data
 - Gemini API integration
 - End-to-end processing workflows
 
@@ -190,4 +197,88 @@ python tests/test_runner.py --components-only -q
 Run tests with maximum verbosity to see detailed error information:
 ```bash
 python tests/test_runner.py -vv
-``` 
+```
+
+## BigQuery Processing Filters Test
+
+The `test_processing_filters.py` test validates that BigQuery filtering is working correctly with the `processing_filters.yaml` configuration.
+
+### Features
+
+- **Real Data Testing** - Tests against actual BigQuery data
+- **Comprehensive Coverage** - Tests all ENI type/subtype combinations from processing_filters.yaml
+- **Detailed Logging** - Shows unprocessed record counts for each combination
+- **Parameterized Testing** - Allows testing with different contact IDs
+- **Data Integrity Validation** - Verifies proper filtering and data structure
+
+### Usage
+
+#### Basic Usage (Default Contact ID)
+```bash
+cd member-insights-processor
+python tests/test_processing_filters.py
+```
+
+#### Test Specific Contact ID
+```bash
+python tests/test_processing_filters.py --contact-id CNT-ABC123456
+```
+
+#### Verbose Logging
+```bash
+python tests/test_processing_filters.py --contact-id CNT-QS0006256 --verbose
+```
+
+#### Using the Runner Script
+```bash
+# Default contact ID
+python scripts/run_processing_filters_test.py
+
+# Specific contact ID
+python scripts/run_processing_filters_test.py CNT-ABC123456
+
+# With verbose logging
+python scripts/run_processing_filters_test.py --verbose
+```
+
+### Test Output
+
+The test provides detailed output including:
+
+- **Processing Rules Validation** - Confirms processing_filters.yaml is loaded correctly
+- **Combination Generation** - Shows all ENI type/subtype combinations to be tested
+- **Record Counts by Combination** - Number of unprocessed records for each combination
+- **Data Integrity Checks** - Validates proper filtering and data structure
+- **Summary Report** - Total combinations tested and total unprocessed records
+
+### Example Output
+```
+🧪 Testing processing filter combinations generation
+📊 Generated 12 ENI combinations:
+  - airtable_affiliations / NULL
+  - airtable_deals_sourced / NULL
+  - airtable_notes / NULL
+  - airtable_notes / investing_preferences
+  - airtable_notes / intro_preferences
+  - recurroo / NULL
+  - recurroo / biography
+  ...
+
+📈 FILTERING TEST SUMMARY for contact CNT-QS0006256
+================================================================================
+Total combinations tested: 12
+Total unprocessed records found: 45
+Records by ENI Type/Subtype:
+  airtable_affiliations     / NULL                :      5 records
+  airtable_deals_sourced    / NULL                :      0 records
+  airtable_notes           / NULL                :     12 records
+  airtable_notes           / investing_preferences:      8 records
+  ...
+```
+
+### Prerequisites
+
+- BigQuery credentials configured
+- Access to the `i-sales-analytics.3i_analytics.eni_vectorizer__all` table
+- Access to the `i-sales-analytics.elvis.eni_processing_log` table
+- Valid contact ID with data in the system 

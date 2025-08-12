@@ -10,29 +10,37 @@ filter_info:
 
 # Processing inclusion rules
 # Each ENI type can specify:
-# - "all": Process all subtypes for this ENI type
-# - List of specific subtypes: Process only the listed subtypes
-# - "none" or empty: Skip this ENI type entirely
+# - List of specific subtypes: Process NULL subtypes PLUS the listed subtypes
+# - "none" or empty: Process ONLY NULL subtypes (no explicit subtypes defined)
+# 
+# NOTE: NULL subtypes (eni_source_subtype IS NULL) are ALWAYS processed first for every ENI type.
+# If you want to exclude an ENI type entirely, comment it out or remove it from the rules.
 
 eni_processing_rules:
-  # Process all affiliations data
-  airtable_affiliations: "all"
+  # Process affiliations data (NULL subtypes only - no explicit subtypes defined)
+  airtable_affiliations:
   
-  # Process all deals sourced data
-  airtable_deals_sourced: "all"
+  # Process deals sourced data (NULL subtypes only - no explicit subtypes defined)
+  airtable_deals_sourced:
   
-  # Process all airtable notes
-  airtable_notes: "all"
+  # Process airtable notes (NULL subtypes + specific subtypes listed below)
+  airtable_notes:
+    - investing_preferences
+    - intro_preferences
   
-  # Process all recurroo data
-  recurroo: "all"
+  # Process recurroo data (NULL subtypes + specific subtypes listed below)
+  recurroo:
+    - biography
+    - asset_class
+    - sector
+    - social
   
-  # Process only specific WhatsApp message types
+  # Process WhatsApp messages (NULL subtypes + specific subtypes listed below)
   whatsapp_messages:
     - "venture"
     - "needs_leads"
   
-  # Process only requested member requests
+  # Process member requests (NULL subtypes + specific subtypes listed below)
   member_requests:
     - "requested"
   

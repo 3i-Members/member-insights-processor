@@ -315,19 +315,60 @@ class MemberInsightsProcessor:
                 result['errors'].append("Failed to connect to BigQuery")
                 return result
             
-            # Get processed ENI IDs for this contact
-            processed_eni_ids = self.log_manager.get_processed_eni_ids(contact_id)
+            # Get processing rules from filter configuration
+            processing_rules = None
+            if self.processing_filter:
+                processing_rules = self.processing_filter.processing_rules
+                logger.info(f"Using processing filter rules for contact {contact_id}")
+            else:
+                logger.info(f"No processing filter configured - skipping contact {contact_id}")
+                result['success'] = True
+                return result
             
-            # Load contact data from BigQuery
-            contact_data = self.bigquery_connector.load_contact_data(
-                contact_id=contact_id,
-                processed_eni_ids=processed_eni_ids
-            )
+            # Get ENI type/subtype combinations to process
+            # NOTE: This will ALWAYS include NULL subtypes first, then any explicitly defined subtypes
+            eni_combinations = self.bigquery_connector.get_eni_combinations_for_processing(processing_rules)
             
-            if contact_data.empty:
+            if not eni_combinations:
+                logger.info(f"No ENI combinations to process for contact {contact_id}")
+                result['success'] = True
+                return result
+            
+            # Process each ENI type/subtype combination separately
+            # Processing order: NULL subtypes first, then explicit subtypes from processing_filters.yaml
+            all_contact_data = []
+            total_records_loaded = 0
+            
+            for eni_source_type, eni_source_subtype in eni_combinations:
+                try:
+                    # Load data for this specific eni_source_type/subtype combination
+                    eni_data = self.bigquery_connector.load_contact_data_filtered(
+                        contact_id=contact_id,
+                        eni_source_type=eni_source_type,
+                        eni_source_subtype=eni_source_subtype
+                    )
+                    
+                    if not eni_data.empty:
+                        all_contact_data.append(eni_data)
+                        total_records_loaded += len(eni_data)
+                        subtype_desc = f"/{eni_source_subtype}" if eni_source_subtype else ""
+                        logger.info(f"Loaded {len(eni_data)} records for {contact_id}, {eni_source_type}{subtype_desc}")
+                    
+                except Exception as e:
+                    error_msg = f"Error loading data for {contact_id}, {eni_source_type}/{eni_source_subtype}: {str(e)}"
+                    result['errors'].append(error_msg)
+                    logger.error(error_msg)
+                    continue
+            
+            # Combine all data if any was loaded
+            if not all_contact_data:
                 logger.info(f"No unprocessed data found for contact {contact_id}")
                 result['success'] = True
                 return result
+            
+            # Concatenate all dataframes
+            import pandas as pd
+            contact_data = pd.concat(all_contact_data, ignore_index=True)
             
             # Verify required columns exist
             if 'eni_source_type' not in contact_data.columns:
@@ -343,25 +384,7 @@ class MemberInsightsProcessor:
                    (contact_data['eni_source_subtype'].astype(str).str.lower().isin(['none', 'nan', 'nat']))
             contact_data.loc[mask, 'eni_source_subtype'] = 'null'
             
-            original_record_count = len(contact_data)
-            
-            # Apply processing filter if configured
-            if self.processing_filter:
-                filtered_data, filter_stats = self.processing_filter.filter_dataframe(contact_data)
-                
-                if filter_stats['skipped_count'] > 0:
-                    logger.info(f"Processing filter: {filter_stats['filtered_count']}/{filter_stats['original_count']} "
-                              f"records included for contact {contact_id} ({filter_stats['filter_efficiency']:.1f}%)")
-                
-                contact_data = filtered_data
-                result['filter_stats'] = filter_stats
-                
-                if contact_data.empty:
-                    logger.info(f"All records filtered out for contact {contact_id}")
-                    result['success'] = True
-                    return result
-            else:
-                logger.debug(f"No processing filter applied - processing all {original_record_count} records")
+            logger.info(f"Loaded total of {total_records_loaded} pre-filtered records for contact {contact_id} across {len(eni_combinations)} ENI combinations")
             
             # Only process structured insights (removed member summary functionality)
             result_data = self._process_combined_structured_insight(
@@ -684,8 +707,24 @@ ALL MEMBER DATA TO ANALYZE:
                         if self.enhanced_logger:
                             self.enhanced_logger.log_airtable_sync(contact_id, False, "structured_insight")
                 
-                # Mark all ENI IDs as processed
-                self.log_manager.mark_multiple_as_processed(contact_id, total_eni_ids)
+                # Mark all ENI IDs as processed in BigQuery
+                records_to_mark = [
+                    {
+                        'eni_id': eni_id,
+                        'contact_id': contact_id,
+                        'processing_status': 'completed',
+                        'processor_version': '1.0.0',
+                        'metadata': {'batch_id': combined_eni_id}
+                    }
+                    for eni_id in total_eni_ids
+                ]
+                
+                successful_count, failed_count = self.bigquery_connector.batch_mark_processed(records_to_mark)
+                if successful_count > 0:
+                    logger.info(f"Marked {successful_count} ENI IDs as processed in BigQuery for contact {contact_id}")
+                if failed_count > 0:
+                    logger.warning(f"Failed to mark {failed_count} ENI IDs as processed in BigQuery for contact {contact_id}")
+                    
                 result['processed_eni_ids'].extend(total_eni_ids)
             
             logger.info(f"Successfully processed combined structured insight for contact {contact_id} with {len(total_eni_ids)} ENI IDs")
