@@ -535,6 +535,63 @@ python scripts/run_processing_filters_test.py CNT-HvA002554
 pytest tests/test_bigquery_connector.py
 ```
 
+## Context Manager and Token Budgeting (New)
+
+The pipeline now uses a consolidated `ContextManager` to assemble the full context for each LLM call with token-aware batching.
+
+- **Location**: `src/context_management/context_manager.py`
+- **Responsibilities**:
+  - Load config (`config/config.yaml`) and resolve context file paths per `eni_source_type` and `eni_source_subtype`
+  - Load and render the system prompt template (`config/system_prompts/structured_insight.md`)
+  - Fetch the latest existing structured insight from Supabase (if available)
+  - Build the four context variables for the template:
+    - `{{current_structured_insight}}`
+    - `{{eni_source_type_context}}`
+    - `{{eni_source_subtype_context}}`
+    - `{{new_data_to_process}}` (rows are truncated to fit the remaining token budget)
+  - Estimate tokens and enforce budgets before adding new rows
+
+### Token Budget Settings
+
+Configured under `processing` in `config/config.yaml`:
+
+```yaml
+processing:
+  context_window_tokens: 200000           # Total tokens available for the prompt
+  reserve_output_tokens: 8000             # Held back for model output
+  max_new_data_tokens_per_group: 12000    # Max tokens for appended data per ENI group
+```
+
+- The system prompt is rendered with the first three variables to compute base token usage.
+- Remaining tokens are allocated to `{{new_data_to_process}}` and rows are added until the budget is reached.
+
+## Context Preview (New)
+
+Use the preview to see exactly what would be sent to the LLM per ENI group, including the fully rendered system prompt and token stats.
+
+### Run the Preview
+
+```bash
+# Activate venv first
+source venv/bin/activate
+
+# Run the preview test (writes a markdown report to logs/)
+pytest tests/test_context_preview.py -q
+```
+
+- Output file: `logs/context_preview_<CONTACT_ID>_<TIMESTAMP>.md`
+- The report contains:
+  - A summary table:
+    - `run_number | eni_source_type | eni_source_sub_type | tokens_system_plus_source_ctx | remaining_tokens | total_rows_in_group | rows_processed | total_tokens_rendered`
+  - For each would-be LLM call:
+    - The full rendered system prompt (with all variables substituted)
+    - Token statistics and the number of rows actually included
+
+### Notes
+
+- The preview does not upsert to Supabase. It uses the latest available insight (or a default stub in tests) to simulate the context.
+- If BigQuery is unavailable, the preview uses a small synthetic dataset and still renders the context and token stats.
+
 ## Contributing
 
 1. Fork the repository

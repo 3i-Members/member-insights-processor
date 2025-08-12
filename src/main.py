@@ -34,6 +34,7 @@ from data_processing.supabase_insights_processor import SupabaseInsightsProcesso
 from context_management.config_loader import create_config_loader
 from context_management.markdown_reader import create_markdown_reader
 from context_management.processing_filter import create_processing_filter
+from context_management.context_manager import ContextManager
 from ai_processing.gemini_processor import create_gemini_processor
 from ai_processing.openai_processor import create_openai_processor
 from ai_processing.anthropic_processor import AnthropicProcessor
@@ -81,6 +82,7 @@ class MemberInsightsProcessor:
         self.json_writer = None
         self.structured_airtable_writer = None
         self.enhanced_logger = None
+        self.context_manager = None
         
         # Supabase components
         self.supabase_client = None
@@ -171,6 +173,16 @@ class MemberInsightsProcessor:
                     logger.info("Continuing without Supabase integration")
             else:
                 logger.info("Supabase integration disabled in configuration")
+
+            # Initialize Context Manager (uses same config, optional Supabase for current_structured_insight)
+            try:
+                self.context_manager = ContextManager(
+                    config_file_path=self.config_file_path,
+                    supabase_client=self.supabase_client
+                )
+                logger.info("Context manager initialized")
+            except Exception as e:
+                logger.warning(f"Failed to initialize ContextManager: {e}")
             
             logger.info("All components initialized successfully")
             
@@ -468,37 +480,40 @@ class MemberInsightsProcessor:
             # Group data by ENI source type and subtype
             grouped_data = contact_data.groupby(['eni_source_type', 'eni_source_subtype'])
             
-            # Build comprehensive context from all ENI groups
-            all_contexts = []
-            all_member_data = []
+            # Build per-group context variables with token budgeting
+            per_group_blocks = []
             total_eni_ids = []
             
             for (eni_source_type, eni_source_subtype), group_data in grouped_data:
                 try:
-                    logger.info(f"Collecting context for {eni_source_type}/{eni_source_subtype} for contact {contact_id}")
-                    
-                    # Load context for this ENI source type/subtype
-                    context_file_paths = self.config_loader.get_context_file_paths(eni_source_type, eni_source_subtype)
-                    
-                    context_parts = []
-                    
-                    # Load default context first
-                    if context_file_paths['default']:
-                        default_content = self.markdown_reader.read_markdown_file(context_file_paths['default'])
-                        if default_content:
-                            context_parts.append(f"=== DEFAULT CONTEXT FOR {eni_source_type.upper()} ===\n{default_content}")
-                    
-                    # Load subtype-specific context if available
-                    if context_file_paths['subtype']:
-                        subtype_content = self.markdown_reader.read_markdown_file(context_file_paths['subtype'])
-                        if subtype_content:
-                            context_parts.append(f"=== SUBTYPE CONTEXT FOR {eni_source_type.upper()}/{eni_source_subtype.upper()} ===\n{subtype_content}")
-                    
-                    # Add context with data type label
-                    if context_parts:
-                        group_context = f"=== ENI GROUP: {eni_source_type}/{eni_source_subtype} ({len(group_data)} records) ===\n"
-                        group_context += "\n\n".join(context_parts)
-                        all_contexts.append(group_context)
+                    # Build context variables for this group
+                    if not self.context_manager:
+                        raise RuntimeError("ContextManager not initialized")
+
+                    ctx_vars = self.context_manager.build_context_variables(
+                        contact_id=contact_id,
+                        eni_source_type=eni_source_type,
+                        eni_source_subtype=eni_source_subtype,
+                        eni_group_df=group_data,
+                        system_prompt_key=system_prompt_key,
+                    )
+
+                    # Render a compact per-group block using the four variables
+                    group_header = f"=== ENI GROUP: {eni_source_type}/{eni_source_subtype} ({len(group_data)} records) ===\n"
+                    type_block = (
+                        f"## ENI Source Type Context ({eni_source_type})\n"
+                        f"{ctx_vars['eni_source_type_context']}\n\n"
+                    ) if ctx_vars.get('eni_source_type_context') else ""
+                    subtype_block = (
+                        f"## ENI Source Subtype Context ({eni_source_subtype})\n"
+                        f"{ctx_vars['eni_source_subtype_context']}\n\n"
+                    ) if ctx_vars.get('eni_source_subtype_context') else ""
+                    new_data_block = (
+                        f"## New Data To Process ({ctx_vars.get('rows_used', 0)} rows)\n"
+                        f"{ctx_vars['new_data_to_process']}\n"
+                    )
+
+                    per_group_blocks.append(group_header + type_block + subtype_block + new_data_block)
                     
                     # Add member data for this group
                     group_member_data = f"=== DATA FOR {eni_source_type.upper()}/{eni_source_subtype.upper()} ===\n"
@@ -517,20 +532,21 @@ class MemberInsightsProcessor:
                     logger.error(error_msg)
                     continue
             
-            # Combine all contexts and data
-            comprehensive_context = "\n\n".join(all_contexts)
-            comprehensive_member_data = "\n\n".join(all_member_data)
+            # Combine all group blocks; include current structured insight once at the top
+            current_structured_insight = ""
+            if self.context_manager:
+                current_structured_insight = self.context_manager.get_current_structured_insight(
+                    contact_id, system_prompt_key
+                )
+            combined_groups_context = "\n\n".join(per_group_blocks)
             
             # Build final prompt for AI processing
             final_prompt_context = f"""
 EXISTING MEMBER SUMMARY (to be updated):
-{member_summary}
+{current_structured_insight}
 
-COMPREHENSIVE CONTEXT FROM ALL ENI GROUPS:
-{comprehensive_context}
-
-ALL MEMBER DATA TO ANALYZE:
-{comprehensive_member_data}
+CONTEXT PACKAGES BY ENI GROUP:
+{combined_groups_context}
 """
             
             # Enhanced logging for AI call
