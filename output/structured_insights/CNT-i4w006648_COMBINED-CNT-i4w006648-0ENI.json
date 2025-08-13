@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "contact_id": "CNT-i4w006648",
+    "eni_id": "COMBINED-CNT-i4w006648-0ENI",
+    "member_name": null,
+    "eni_source_type": null,
+    "eni_source_subtype": null,
+    "generated_at": "2025-08-12T18:19:57.296674",
+    "generator": "structured_insight",
+    "eni_source_types": [
+      "member_requests",
+      "airtable_notes",
+      "recurroo",
+      "whatsapp_messages"
+    ],
+    "eni_source_subtypes": [
+      "null",
+      "social",
+      "requested",
+      "needs_leads",
+      "sector",
+      "biography",
+      "intro_preferences",
+      "asset_class"
+    ],
+    "system_prompt_key": "structured_insight",
+    "context_files": "combined_all_eni_groups",
+    "record_count": 38,
+    "total_eni_ids": 0
+  },
+  "insights": {
+    "raw_content": "Based on the provided data, I'll generate an updated member summary with specific insights and citations. I'll focus on adding new, relevant information while maintaining the existing structure and specificity requirements.\n\n{\n  \"personal\": {\n    \"content\": \"* Originally from Cleveland, OH with professional hockey background including junior league, college at Niagara Falls, and professional play abroad\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Recently relocated to Miami, living in Brickell area\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Active lifestyle including golf, beach activities, travel, music, and watch collecting\\n  * [2025-07-16,ENI-2342270681385607686]\\n* Graduated Magna Cum Laude from Niagara University in 2016, completing Finance degree in three years while playing D1 Hockey\\n  * [2025-07-16,ENI-08453821266462330024]\"\n  },\n  \"business\": {\n    \"content\": \"* Vice President at JDI Realty, responsible for sourcing both equity and debt investment opportunities\\n  * [2025-07-16,ENI-08453821266462330024]\\n* Previously worked at global investment bank in non-traded REIT and Delaware Statutory Trust practices\\n  * [2025-07-16,ENI-08453821266462330024]\\n* Current focus on originating bridge loans with quick execution (5-day closings)\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Pipeline includes 10+ active deals, primarily focusing on opportunities where conventional banks have withdrawn\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Recently closed $24.5M loan at 68% LTV for local developer rehabilitation project\\n  * [2024-07-26,ENI-2394375004039336672]\"\n  },\n  \"investing\": {\n    \"content\": \"* Primary focus on real estate equity (value-add) and bridge lending opportunities\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Investment range typically $25-50k per deal, with capability to scale up to $100k for select opportunities\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Actively pursuing opportunities across multiple real estate sectors including:\\n  - Affordable Housing\\n  - Hospitality\\n  - Industrial\\n  - Mixed Use\\n  - Office\\n  - Residential\\n  - Retail\\n  - Special Purpose\\n  * [2025-07-16,ENI-03428267815556039244]\\n* Additional interest in hedge fund and private equity opportunities\\n  * [2025-07-16,ENI-4036291430510282850]\"\n  },\n  \"3i\": {\n    \"content\": \"* Actively engaged in 3i community, particularly focused on South Florida network development\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Leveraging network for both deal flow and strategic partnerships\\n  * [2024-07-26,ENI-2394375004039336672]\\n* Successfully connected with institutional funding sources through 3i network (e.g., Oak North)\\n  * [2024-07-26,ENI-2394375004039336672]\"\n  },\n  \"deals\": {\n    \"content\": \"This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\\n- Real estate equity (value-add)\\n  * [2024-07-26,ENI-2394375004039336672]\\n- Bridge lending\\n  * [2024-07-26,ENI-2394375004039336672]\\n- Commercial real estate development\\n  * [2025-07-16,ENI-08453821266462330024]\\n\\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\\n- Hedge Fund opportunities\\n  * [2025-07-16,ENI-4036291430510282850]\\n- Private Equity investments\\n  * [2025-07-16,ENI-4036291430510282850]\\n- Cold storage facilities\\n  * [2024-11-15,ENI-1528814917913169409]\\n\\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\\n- Cryptocurrency\\n  * [2024-07-26,ENI-2394375004039336672]\"\n  },\n  \"introductions\": {\n    \"content\": \"**Looking to meet:**\\n- Established real estate professionals in Miami market\\n  * [2024-07-26,ENI-2394375004039336672]\\n- Real estate relationships, specifically mentioning Zach Schofel and Eddie Ishay\\n  * [2024-04-26,ENI-5125464180814380847]\\n- Commercial real estate developers and operators in South Florida\\n  * [2024-07-26,ENI-2394375004039336672]\\n\\n**Avoid introductions to:**\\n- Younger talent (25-35 age range)\\n  * [2024-04-26,ENI-5125464180814380847]\"\n  }\n}"
+  }
+}

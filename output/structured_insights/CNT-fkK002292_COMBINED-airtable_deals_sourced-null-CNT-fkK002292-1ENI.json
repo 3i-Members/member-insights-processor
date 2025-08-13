@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "contact_id": "CNT-fkK002292",
+    "eni_id": "COMBINED-airtable_deals_sourced-null-CNT-fkK002292-1ENI",
+    "member_name": null,
+    "eni_source_type": "airtable_deals_sourced",
+    "eni_source_subtype": "null",
+    "generated_at": "2025-08-12T19:10:58.225302",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "airtable_deals_sourced/null",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "member_name": "Adam Schwartz",
+    "personal": "- Adam Schwartz — recorded as the deal sourcer for FMZ Ventures (airtable deal id DEAL-vyK000273).\n  - [2022-04-29,ENI-289208684248927773]",
+    "business": "- Sourced FMZ Ventures: firm is raising a $200M Fund II; focuses on growth deals within the experience economy and marketplace ecosystems; sector tag: Venture Capital / VC-Early Stage.\n  - [2022-04-29,ENI-289208684248927773]",
+    "investing": "- Asset classes: Venture Capital funds (GP fundraises, e.g., Fund II) and equity in early-stage to growth-stage marketplace & experience-economy companies.\n  - [2022-04-29,ENI-289208684248927773]\n- Investment structures: actively sources GP fundraising rounds (Fund II+), and sources early-stage VC deal flow in marketplaces and experience platforms.\n  - [2022-04-29,ENI-289208684248927773]",
+    "3i": "- Active in sourcing and introducing VC fundraises and growth-stage marketplace deals (example: sourced FMZ Ventures Fund II, $200M).\n  - [2022-04-29,ENI-289208684248927773]",
+    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- VC — Early Stage; marketplaces; experience economy platforms\n  - [2022-04-29,ENI-289208684248927773]\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Growth-stage marketplace companies and experience-economy platforms\n  - [2022-04-29,ENI-289208684248927773]\n- GP fundraises (Fund II and later); evaluating venture fund opportunities (~$200M+ fundraises as exemplified by FMZ Ventures)\n  - [2022-04-29,ENI-289208684248927773]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- No stated avoidances in the provided data\n  - [2022-04-29,ENI-289208684248927773]",
+    "introductions": "**Looking to meet:**\n- GPs raising Fund II or later (example connection: FMZ Ventures, raising $200M Fund II)\n  - [2022-04-29,ENI-289208684248927773]\n\n**Avoid introductions to:**\n- No explicit avoidances recorded in the provided data\n  - [2022-04-29,ENI-289208684248927773]"
+  }
+}

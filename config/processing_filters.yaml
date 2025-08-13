@@ -36,9 +36,9 @@ eni_processing_rules:
     - social
   
   # Process WhatsApp messages (NULL subtypes + specific subtypes listed below)
-  whatsapp_messages:
-    - "venture"
-    - "needs_leads"
+  # whatsapp_messages:
+  #   - "venture"
+  #   - "needs_leads"
   
   # Process member requests (NULL subtypes + specific subtypes listed below)
   member_requests:

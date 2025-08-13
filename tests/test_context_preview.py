@@ -183,9 +183,13 @@ def test_context_preview_log_generation():
         lines.append(f"=== Call {idx}: {result['eni_source_type']}/{result['eni_source_subtype']} ===\n")
         lines.append(f"Rows in group: {result['rows_in_group']}\n")
         lines.append("-- Rendered System Prompt (Full) --\n")
-        lines.append(ctxv.get("rendered_system_prompt", "").strip() + "\n\n")
+        rendered = ctxv.get("rendered_system_prompt", "").strip()
+        lines.append(rendered + "\n\n")
         lines.append("-- Token Stats --\n")
         lines.append(json.dumps(token_stats, indent=2) + "\n\n")
+
+        # Basic assertion within the loop to ensure eni_id is present in rendered content
+        # (Not raising here; we'll assert after writing the log for better failure context.)
 
     # Write out log file
     logs_dir = _ensure_logs_dir()
@@ -196,6 +200,10 @@ def test_context_preview_log_generation():
     # Assert log created with content
     assert log_path.exists(), "Preview log file was not created"
     assert log_path.stat().st_size > 0, "Preview log file is empty"
+
+    # Read back to assert ENI IDs made it into the rendered content
+    content = log_path.read_text(encoding="utf-8")
+    assert "ENI-" in content, "Rendered prompt is missing ENI citations"
 
     # Print location for convenience when running tests locally
     print(f"Context preview log written to: {log_path}") 

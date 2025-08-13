@@ -28,7 +28,8 @@ class OpenAIProcessor:
             model_name: OpenAI model name to use
             generation_config: Generation configuration parameters
         """
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        # Support both standard and alternate env var names
+        self.api_key = api_key or os.getenv('OPENAI_API_KEY') or os.getenv('OPEN_AI_KEY')
         self.model_name = model_name
         self.generation_config = generation_config or {}
         self.client = None
@@ -169,13 +170,25 @@ class OpenAIProcessor:
                         ]
                     }
                     
-                    # Add generation config parameters (excluding unsupported ones for o1 models)
-                    if self.model_name.startswith('o1'):
-                        # o1 models don't support temperature, top_p, etc.
+                    # Determine which token limit parameter to use per model family
+                    model_lower = self.model_name.lower()
+                    uses_completion_tokens = (
+                        model_lower.startswith('o1') or
+                        model_lower.startswith('gpt-5') or
+                        model_lower.startswith('gpt-4.1') or
+                        model_lower.startswith('gpt-4o')
+                    )
+
+                    # Map generation config into API params respecting model differences
+                    if uses_completion_tokens:
+                        # Newer models expect max_completion_tokens; avoid sending max_tokens
                         if 'max_tokens' in self.generation_config:
-                            generation_params['max_completion_tokens'] = self.generation_config['max_tokens']
+                            requested = self.generation_config['max_tokens']
+                            # Cap to 128k completion tokens per current API guidance
+                            generation_params['max_completion_tokens'] = min(int(requested), 128000)
+                        # Do not send temperature/top_p/penalties for these model families
                     else:
-                        # Regular models support full config
+                        # Legacy models accept max_tokens
                         for key, value in self.generation_config.items():
                             if key == 'max_tokens':
                                 generation_params['max_tokens'] = value

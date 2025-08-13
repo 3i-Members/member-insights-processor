@@ -71,7 +71,7 @@ This Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies
 
 **Be extremely specific about:**
 
-* **Professional roles**: Exact titles and experience levels (e.g., "Series B+ SaaS CEOs", "healthcare PE partners with \$500M+ AUM")
+* **Professional roles**: Exact titles and experience levels (e.g., "Series B+ SaaS CEOs", "healthcare PE partners with $500M+ AUM")
 * **Industry expertise**: Narrow specializations (e.g., "logistics automation founders", "renewable energy project developers")
 * **Deal context**: Specific transaction types (e.g., "GPs raising Fund II or later", "growth equity investors in fintech")
 * **Geographic focus**: Specific markets (e.g., "Texas-based real estate operators", "EU expansion-ready founders")
@@ -128,13 +128,13 @@ Return a JSON object with the same structure as the input, either:
 1. **Unchanged**: If no new relevant information needs to be added
 2. **Updated**: With new bullet points or information appended to the appropriate sections, **with maximum specificity**
 
-**NEW REQUIREMENT — INLINE CITATIONS**: Every bullet point in personal, business, investing, 3i, deals, and introductions sections must include inline citations showing the source ENI ID(s) and logged\_date(s).
+**NEW REQUIREMENT — INLINE CITATIONS**: Every bullet point in personal, business, investing, 3i, deals, and introductions sections must include inline citations showing the source ENI ID(s), logged_date(s), and the source_type (main).
 
 ### Citation Requirements
 
-1. **Format**: Each bullet point must have sub-bullets with citations in tuple format: \[logged\_date,eni\_id]
+1. **Format**: Each bullet point must have sub-bullets with citations in tuple format: [logged_date,eni_id,source_type]
 2. **Multiple Sources**: If multiple sources support the same bullet point, create separate sub-bullets for each citation
-3. **Date Handling**: If logged\_date is null, use "N/A" in the tuple: \[N/A,eni\_id]
+3. **Date Handling**: If logged_date is null, use "N/A" in the tuple: [N/A,eni_id,source_type]
 4. **Sub-bullet Format**: Use markdown sub-bullets with proper indentation — each citation gets its own sub-bullet line
 
 ## Tone & Style
@@ -156,7 +156,7 @@ Return a JSON object with the same structure as the input, either:
 6. **Maintain Format**: Strictly adhere to the markdown formatting within JSON structure
 7. **No Assumptions**: Only add information explicitly supported by the new data
 8. **Return Unchanged When Appropriate**: It's perfectly acceptable to return the input unchanged if the new data adds no value
-9. **INDIVIDUAL CITATION SUB-BULLETS REQUIRED**: Every bullet point must have individual citation sub-bullets with \[logged\_date,eni\_id] format showing source data and time relevance.
+9. **INDIVIDUAL CITATION SUB-BULLETS REQUIRED**: Every bullet point must have individual citation sub-bullets with [logged_date,eni_id,source_type] format showing source data, its type, and time relevance.
 
 ---
 
@@ -166,23 +166,23 @@ Return a JSON object with the same structure as the input, either:
 
 ### CONTEXT 1 — Existing Member Summary (JSON)
 
-<\<CONTEXT\_1\_START>>
+<<CONTEXT_1_START>>
 {{current_structured_insight}}
-<\<CONTEXT\_1\_END>>
+<<CONTEXT_1_END>>
 
 ### CONTEXT 2 — Data Structure Guidelines (Markdown)
 
-<\<CONTEXT\_2\_START>>
+<<CONTEXT_2_START>>
 {{eni_source_type_context}}
 
 {{eni_source_subtype_context}}
-<\<CONTEXT\_2\_END>>
+<<CONTEXT_2_END>>
 
 ### CONTEXT 3 — New Data / Event to Evaluate (Free Text or JSON)
 
-<\<CONTEXT\_3\_START>>
+<<CONTEXT_3_START>>
 {{new_data_to_process}}
-<\<CONTEXT\_3\_END>>
+<<CONTEXT_3_END>>
 
 ### Context Ingestion Protocol
 

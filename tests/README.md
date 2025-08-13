@@ -282,3 +282,32 @@ Records by ENI Type/Subtype:
 - Access to the `i-sales-analytics.3i_analytics.eni_vectorizer__all` table
 - Access to the `i-sales-analytics.elvis.eni_processing_log` table
 - Valid contact ID with data in the system 
+
+# Tests
+
+## Context Preview (Per-Group) — Markdown Log
+
+`tests/test_context_preview.py` builds a token-aware context per `(eni_source_type, eni_source_subtype)` group and writes a readable markdown report.
+
+Run:
+
+```bash
+pytest -q tests/test_context_preview.py
+```
+
+Output:
+- `logs/context_preview_{CONTACT_ID}_{TIMESTAMP}.md`
+- Summary table with columns:
+  - `run_number | eni_source_type | eni_source_sub_type | tokens_system_plus_source_ctx | remaining_tokens | total_rows_in_group | rows_processed | total_tokens_rendered`
+- For each run (group):
+  - Fully rendered system prompt including:
+    - `{{current_structured_insight}}`
+    - `{{eni_source_type_context}}`
+    - `{{eni_source_subtype_context}}`
+    - `{{new_data_to_process}}` (now includes citation lines: `[logged_date,eni_id,source_type]`)
+  - Token stats as JSON
+
+Notes:
+- The test will attempt to connect to BigQuery using your config; if unavailable, it falls back to a small synthetic dataset.
+- Assertion ensures ENI IDs appear in the rendered prompt.
+- This test does not call the LLM or upsert to Supabase; it’s for preview and token budgeting only. 

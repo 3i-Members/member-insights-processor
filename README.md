@@ -592,6 +592,84 @@ pytest tests/test_context_preview.py -q
 - The preview does not upsert to Supabase. It uses the latest available insight (or a default stub in tests) to simulate the context.
 - If BigQuery is unavailable, the preview uses a small synthetic dataset and still renders the context and token stats.
 
+## Per-Group Processing Mode (New)
+
+The processor now executes one LLM call per ENI group:
+- Group key: `(eni_source_type, eni_source_subtype)`
+- For each group with unprocessed rows:
+  - Query BigQuery via `load_contact_data_filtered(contact_id, type, subtype)`
+  - Build a token-budgeted context with `ContextManager.build_context_variables(...)`
+  - Call the LLM once for the group
+  - Upsert to Supabase per group
+  - Mark only that group’s ENIs as processed immediately
+
+Benefits: tighter, relevant context and reduced prompt size per call. Note this increases the number of total LLM calls proportionally to the number of populated groups.
+
+## Inline Citations Now Include `source_type`
+
+System prompt (`config/system_prompts/structured_insight.md`) requires every bullet to include sub-bullets with citations in the format:
+
+```
+[logged_date,eni_id,source_type]
+```
+
+The appended context (`new_data_to_process`) now provides per-row lines like:
+
+```
+- {description}
+  * [YYYY-MM-DD,ENI-...,airtable_notes]
+```
+
+This enables the model to produce correctly formatted citations.
+
+## ContextManager Highlights
+
+Location: `src/context_management/context_manager.py`
+- Centralizes config access (AI provider, Airtable, Supabase), context path resolution, system prompt loading, token estimation, and validation
+- Produces the four variables for the template:
+  - `{{current_structured_insight}}` (fetched from Supabase if available)
+  - `{{eni_source_type_context}}`
+  - `{{eni_source_subtype_context}}` (empty when subtype is null)
+  - `{{new_data_to_process}}` (token-limited; includes description + citation `[date,eni_id,source_type]` lines)
+- Includes system prompt in token estimation and limits appended rows to fit remaining budget
+
+## Context Preview (.md) Log
+
+Run:
+
+```bash
+pytest -q tests/test_context_preview.py
+```
+
+This generates `logs/context_preview_{CONTACT_ID}_{TIMESTAMP}.md` with:
+- A summary table of all would-be LLM calls (one per group)
+- Fully rendered system prompt per call (with the appended group data)
+- Token stats (base/system context, available for new data, rendered total)
+
+## OpenAI Configuration Notes
+
+- Env var fallback supported: `OPENAI_API_KEY` or `OPEN_AI_KEY`
+- For modern models (gpt-5, o1, gpt-4.1, gpt-4o):
+  - Use `max_completion_tokens` (not `max_tokens`)
+  - Sampling params (temperature/top_p/penalties) are omitted to match API constraints
+  - Completion tokens capped at `128000`
+
+Configure the provider via `processing.ai_provider` in `config/config.yaml`.
+
+## Known Behavior
+
+- Supabase current summary is fetched per call (requery OK)
+- ENI IDs for group upserts use `COMBINED-{type}-{subtype}-{contact}-{count}ENI` to satisfy schema validation
+- BigQuery is queried per group; only that group’s ENIs are marked processed upon success
+
+## Troubleshooting Performance
+
+If overall runtime increases (many groups → many calls):
+- Reduce groups via `processing.filter_config`
+- Lower `processing.max_new_data_tokens_per_group`
+- Increase result caching (e.g., reuse current summary across a run)
+- Consider batching very small groups together (future enhancement)
+
 ## Contributing
 
 1. Fork the repository

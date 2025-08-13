@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "contact_id": "CNT-fkK002292",
+    "eni_id": "GROUP-airtable_affiliations-null-CNT-fkK002292-3ENI",
+    "member_name": null,
+    "eni_source_type": "airtable_affiliations",
+    "eni_source_subtype": "null",
+    "generated_at": "2025-08-12T19:08:31.199128",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "airtable_affiliations/null",
+    "record_count": 3,
+    "total_eni_ids": 3
+  },
+  "insights": {
+    "member_name": "Adam Schwartz",
+    "personal": "* Graduated from Brown University (BA)\n  * [2024-07-08,ENI-2274416769085728495]\n* Graduated from Columbia Business School (MBA)\n  * [2024-07-08,ENI-06235030513791583095]",
+    "business": "* Partner at First Manhattan (Investment Adviser; Investment Management; part of a $31B+ AuM firm serving individuals, families, fiduciaries, partnerships, and charitable trusts & foundations)\n  * [2024-07-08,ENI-2480242359248755741]",
+    "investing": "* Partner at First Manhattan — involved in investment advisory and customized wealth planning for high-net-worth individuals, family offices, fiduciaries, partnerships, and charitable foundations (experience implied by First Manhattan's client focus and $31B+ AuM)\n  * [2024-07-08,ENI-2480242359248755741]\n* Affiliation tags: Investment Adviser; Investment Management (supports advisory/portfolio management role)\n  * [2024-07-08,ENI-2480242359248755741]",
+    "3i": "* Network access to First Manhattan's private client base (individuals, families, fiduciaries, partnerships, charitable trusts and foundations) — potential source of deal flow and LP relationships for bespoke/private-client investment opportunities\n  * [2024-07-08,ENI-2480242359248755741]\n* Strong alumni network ties: Brown University (undergrad) and Columbia Business School (MBA) — potential channel for founder/CEO and operator introductions\n  * [2024-07-08,ENI-2274416769085728495]\n  * [2024-07-08,ENI-06235030513791583095]",
+    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- Wealth & fiduciary investment management for individuals, families, partnerships, charitable trusts and foundations (multi-asset/advisory mandates within First Manhattan's $31B+ AuM context)\n  * [2024-07-08,ENI-2480242359248755741]\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- No explicit new interests captured in current affiliation records\n  * [2024-07-08,ENI-2480242359248755741]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- No explicit avoidances captured in current affiliation records\n  * [2024-07-08,ENI-2480242359248755741]",
+    "introductions": "**Looking to meet:**\n- Family office principals, trustees, and philanthropic foundation executives (aligned with First Manhattan's client base)\n  * [2024-07-08,ENI-2480242359248755741]\n- Brown and Columbia MBA alumni founders/CEOs and senior operators for potential deal-sourcing and advisory roles\n  * [2024-07-08,ENI-2274416769085728495]\n  * [2024-07-08,ENI-06235030513791583095]\n\n**Avoid introductions to:**\n- No explicit avoidances recorded in current affiliation data\n  * [2024-07-08,ENI-2480242359248755741]"
+  }
+}

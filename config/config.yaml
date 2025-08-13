@@ -153,17 +153,17 @@ airtable:
 
 # AI Configuration
 # Choose between 'openai', 'gemini', or 'anthropic'
-ai_provider: "anthropic"
+ai_provider: "openai"
 
 # OpenAI Configuration
 openai:
   # Note: Set OPENAI_API_KEY as environment variable for security
-  model_name: "o1-mini"
+  model_name: "gpt-5-mini-2025-08-07"
   
   # Generation settings
   generation_config:
     temperature: 0.7
-    max_tokens: 8192
+    max_tokens: 400000
     top_p: 0.8
     presence_penalty: 0.0
     frequency_penalty: 0.0
@@ -217,7 +217,7 @@ anthropic:
 # Processing Configuration
 processing:
   # AI Provider selection
-  ai_provider: "anthropic"  # Choose 'openai', 'gemini', or 'anthropic'
+  ai_provider: "openai"  # Choose 'openai', 'gemini', or 'anthropic'
   
   # Maximum number of contacts to process in a single batch
   max_batch_size: 100
@@ -232,7 +232,7 @@ processing:
   default_system_prompt: "structured_insight"
 
   # Token budgeting for context construction
-  context_window_tokens: 200000           # Total tokens available for prompt
+  context_window_tokens: 400000           # Total tokens available for prompt
   reserve_output_tokens: 8000             # Reserve for model output generation
   max_new_data_tokens_per_group: 12000    # Cap per ENI group for new data rows
   

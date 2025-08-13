@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "contact_id": "CNT-fkK002292",
+    "eni_id": "COMBINED-recurroo-sector-CNT-fkK002292-1ENI",
+    "member_name": null,
+    "eni_source_type": "recurroo",
+    "eni_source_subtype": "sector",
+    "generated_at": "2025-08-12T19:17:05.837706",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "recurroo/sector",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "personal": "* No new personal information was provided in the recent sector data.\n  * [2025-06-27,ENI-5963749855464716463]",
+    "business": "* No new business information was provided in the recent sector data.\n  * [2025-06-27,ENI-5963749855464716463]",
+    "investing": "* Interested in exploring investments in Artificial Intelligence.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Business Services.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Cloud Computing.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Education.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments focused on Emerging Markets.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Finance (broad sector listed).\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Gaming and eSports.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Infrastructure.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Logistics.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Software / SaaS.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Sports.\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in TMT (Technology, Media, Telecom).\n  * [2025-06-27,ENI-5963749855464716463]\n* Interested in exploring investments in Technology (general).\n  * [2025-06-27,ENI-5963749855464716463]",
+    "3i": "* No new 3i-specific information (interests, introductions, or initiatives) was provided in the recent sector data.\n  * [2025-06-27,ENI-5963749855464716463]",
+    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- No explicit experience details were provided in the recent sector data (only sector interests were listed).\n  - [2025-06-27,ENI-5963749855464716463]\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Artificial Intelligence\n  - [2025-06-27,ENI-5963749855464716463]\n- Business Services\n  - [2025-06-27,ENI-5963749855464716463]\n- Cloud Computing\n  - [2025-06-27,ENI-5963749855464716463]\n- Education\n  - [2025-06-27,ENI-5963749855464716463]\n- Emerging Markets\n  - [2025-06-27,ENI-5963749855464716463]\n- Finance\n  - [2025-06-27,ENI-5963749855464716463]\n- Gaming and eSports\n  - [2025-06-27,ENI-5963749855464716463]\n- Infrastructure\n  - [2025-06-27,ENI-5963749855464716463]\n- Logistics\n  - [2025-06-27,ENI-5963749855464716463]\n- Software / SaaS\n  - [2025-06-27,ENI-5963749855464716463]\n- Sports\n  - [2025-06-27,ENI-5963749855464716463]\n- TMT (Technology, Media, Telecom)\n  - [2025-06-27,ENI-5963749855464716463]\n- Technology (general)\n  - [2025-06-27,ENI-5963749855464716463]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- No explicit avoidance preferences were provided in the recent sector data.\n  - [2025-06-27,ENI-5963749855464716463]",
+    "introductions": "**Looking to meet:**\n- No specific introduction targets were listed in the recent sector data.\n  - [2025-06-27,ENI-5963749855464716463]\n\n**Avoid introductions to:**\n- No specific introduction avoidances were listed in the recent sector data.\n  - [2025-06-27,ENI-5963749855464716463]"
+  }
+}
