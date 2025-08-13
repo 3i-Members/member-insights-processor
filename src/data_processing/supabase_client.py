@@ -17,6 +17,7 @@ from functools import wraps
 from supabase import create_client, Client
 from postgrest.exceptions import APIError
 import json
+from utils.token_utils import estimate_tokens
 
 from .schema import (
     StructuredInsight, 
@@ -213,7 +214,17 @@ class SupabaseInsightsClient:
             
             if result.data:
                 insight = StructuredInsight.from_db_dict(result.data[0])
-                logger.debug(f"Retrieved insight for contact_id: {contact_id}")
+                # Build a text to estimate tokens from: concatenate sections that exist
+                parts = [
+                    insight.personal or "",
+                    insight.business or "",
+                    insight.investing or "",
+                    insight.three_i or "",
+                    insight.deals or "",
+                    insight.introductions or "",
+                ]
+                token_estimate = estimate_tokens("\n".join([p for p in parts if p]))
+                logger.debug(f"Retrieved insight for contact_id: {contact_id} - Token Estimate ({token_estimate})")
                 return insight
             
             logger.debug(f"No insight found for contact_id: {contact_id}")

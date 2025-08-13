@@ -44,6 +44,8 @@ from output_management.enhanced_airtable_writer import create_enhanced_airtable_
 from output_management.json_writer import create_json_writer
 from output_management.structured_airtable_writer import create_structured_airtable_writer
 from utils.enhanced_logger import create_enhanced_logger
+from utils.token_utils import estimate_tokens
+from output_management.markdown_writer import LLMTraceWriter
 
 # Configure logging
 logging.basicConfig(
@@ -248,9 +250,9 @@ class MemberInsightsProcessor:
             
             # Validate context structure (moved to ContextManager)
             context_validation = self.context_manager.validate_context_structure()
-                report['component_status']['context'] = context_validation
-                if not context_validation['valid']:
-                    report['warnings'].extend(context_validation['issues'])
+            report['component_status']['context'] = context_validation
+            if not context_validation['valid']:
+                report['warnings'].extend(context_validation['issues'])
             
             # Validate output directory
             if self.markdown_writer:
@@ -325,6 +327,19 @@ class MemberInsightsProcessor:
         }
         
         try:
+            # Optional LLM trace setup
+            debug_cfg = self.context_manager.config_data.get('debug', {}) or {}
+            llm_trace_cfg = (debug_cfg.get('llm_trace') or {}) if debug_cfg else {}
+            llm_trace_enabled = bool(llm_trace_cfg.get('enabled'))
+            trace_file_path = None
+            trace_writer = None
+            if llm_trace_enabled:
+                trace_writer = LLMTraceWriter(llm_trace_cfg.get('output_dir', 'logs/llm_traces'))
+                trace_file_path = trace_writer.start_trace(
+                    contact_id,
+                    llm_trace_cfg.get('file_naming_pattern', 'llm_trace_{contact_id}_{timestamp}.md')
+                )
+            
             # Ensure BigQuery connection is established
             if not self.bigquery_connector.connect():
                 result['errors'].append("Failed to connect to BigQuery")
@@ -362,9 +377,9 @@ class MemberInsightsProcessor:
                     if eni_data.empty:
                         continue
                     total_loaded += len(eni_data)
-                        subtype_desc = f"/{eni_source_subtype}" if eni_source_subtype else ""
-                        logger.info(f"Loaded {len(eni_data)} records for {contact_id}, {eni_source_type}{subtype_desc}")
-                    
+                    subtype_desc = f"/{eni_source_subtype}" if eni_source_subtype else ""
+                    logger.info(f"Loaded {len(eni_data)} records for {contact_id}, {eni_source_type}{subtype_desc}")
+
                     # Normalize subtype for consistency
                     eni_data['eni_source_subtype'] = eni_data['eni_source_subtype'].fillna('null')
                     mask = (
@@ -381,33 +396,20 @@ class MemberInsightsProcessor:
                         system_prompt_key=system_prompt_key,
                     )
 
-                    # Build per-group context block
-                    group_header = f"=== ENI GROUP: {eni_source_type}/{eni_source_subtype} ({len(eni_data)} records) ===\n"
-                    type_block = (
-                        f"## ENI Source Type Context ({eni_source_type})\n"
-                        f"{ctx_vars['eni_source_type_context']}\n\n"
-                    ) if ctx_vars.get('eni_source_type_context') else ""
-                    subtype_block = (
-                        f"## ENI Source Subtype Context ({eni_source_subtype})\n"
-                        f"{ctx_vars['eni_source_subtype_context']}\n\n"
-                    ) if ctx_vars.get('eni_source_subtype_context') else ""
-                    new_data_block = (
-                        f"## New Data To Process ({ctx_vars.get('rows_used', 0)} rows)\n"
-                        f"{ctx_vars['new_data_to_process']}\n"
+                    # Readable token diagnostics for this group
+                    token_stats = ctx_vars.get('token_stats', {})
+                    logger.info(
+                        (
+                            f"[CTX] {contact_id} {eni_source_type}/{eni_source_subtype} "
+                            f"rows_total={ctx_vars.get('rows_total', 0)} rows_used={ctx_vars.get('rows_used', 0)} | "
+                            f"existing_summary_tokens={token_stats.get('existing_summary_tokens', 0)} "
+                            f"base_tokens={token_stats.get('base_tokens', 0)} new_data_tokens_used={token_stats.get('new_data_tokens_used', 0)} "
+                            f"available_for_new_data={token_stats.get('available_for_new_data', 0)} rendered_full_tokens={token_stats.get('rendered_full_tokens', 0)}"
+                        )
                     )
-                    combined_group_context = group_header + type_block + subtype_block + new_data_block
 
-                    # Final prompt for this group
-                    current_structured_insight = self.context_manager.get_current_structured_insight(
-                        contact_id, system_prompt_key
-                    )
-                    final_prompt_context = f"""
-EXISTING MEMBER SUMMARY (to be updated):
-{current_structured_insight}
-
-CONTEXT FOR ENI GROUP:
-{combined_group_context}
-"""
+                    # Use fully-rendered system prompt from ContextManager (matches preview logic)
+                    full_rendered_prompt = ctx_vars.get('rendered_system_prompt') or ""
 
                     # LLM call for this group
                     if self.enhanced_logger:
@@ -418,12 +420,7 @@ CONTEXT FOR ENI GROUP:
                             len(eni_data)
                         )
                     start_time = time.time()
-                    insights = self.ai_processor.process_single_contact(
-                        contact_data=eni_data,
-                        system_prompt_key=system_prompt_key,
-                        context_content=final_prompt_context,
-                        config_loader=self.config_loader
-                    )
+                    insights = self.ai_processor.generate_from_full_prompt(full_rendered_prompt)
                     ai_duration = time.time() - start_time
                     if self.enhanced_logger:
                         self.enhanced_logger.log_ai_call_end(
@@ -435,9 +432,77 @@ CONTEXT FOR ENI GROUP:
                             len(insights) if insights else 0
                         )
 
+                    # Append trace for request
+                    if llm_trace_enabled and trace_writer and trace_file_path:
+                        if llm_trace_cfg.get('include_rendered_prompts', True):
+                            trace_writer.append_section(trace_file_path, f"Request: {eni_source_type}/{eni_source_subtype}", full_rendered_prompt)
+                        if llm_trace_cfg.get('include_token_stats', True):
+                            import json as _json
+                            trace_writer.append_section(trace_file_path, "Token Stats", _json.dumps(token_stats, indent=2))
+
                     if not insights:
                         result['errors'].append(f"Failed to generate insights for {contact_id} {eni_source_type}/{eni_source_subtype}")
                         continue
+
+                    # Token-loss guard: compare output vs existing summary tokens
+                    existing_summary_tokens = token_stats.get('existing_summary_tokens', 0)
+                    output_token_estimate = estimate_tokens(insights)
+                    logger.info(
+                        (
+                            f"[LLM] {contact_id} {eni_source_type}/{eni_source_subtype} "
+                            f"output_token_estimate={output_token_estimate} vs existing_summary_tokens={existing_summary_tokens}"
+                        )
+                    )
+
+                    if existing_summary_tokens and output_token_estimate < existing_summary_tokens:
+                        logger.error(
+                            (
+                                f"[TOKEN-LOSS] Output tokens ({output_token_estimate}) < existing summary tokens ({existing_summary_tokens}). "
+                                f"Retrying once for {contact_id} {eni_source_type}/{eni_source_subtype}"
+                            )
+                        )
+                        # Retry once
+                        start_time_retry = time.time()
+                        insights_retry = self.ai_processor.generate_from_full_prompt(full_rendered_prompt)
+                        ai_retry_duration = time.time() - start_time_retry
+                        if self.enhanced_logger:
+                            self.enhanced_logger.log_ai_call_end(
+                                self.ai_processor.model_name if hasattr(self.ai_processor, 'model_name') else 'AI',
+                                "structured_insight (retry)",
+                                f"{eni_source_type}/{eni_source_subtype}",
+                                bool(insights_retry),
+                                ai_retry_duration,
+                                len(insights_retry) if insights_retry else 0
+                            )
+
+                        if not insights_retry:
+                            result['errors'].append(
+                                f"Retry also failed for {contact_id} {eni_source_type}/{eni_source_subtype}; skipping upsert and processed-marking"
+                            )
+                            continue
+
+                        output_retry_tokens = estimate_tokens(insights_retry)
+                        logger.info(
+                            (
+                                f"[LLM-RETRY] {contact_id} {eni_source_type}/{eni_source_subtype} output_token_estimate={output_retry_tokens} "
+                                f"vs existing_summary_tokens={existing_summary_tokens}"
+                            )
+                        )
+                        if output_retry_tokens < existing_summary_tokens:
+                            logger.error(
+                                (
+                                    f"[TOKEN-LOSS] Retry output still smaller ({output_retry_tokens} < {existing_summary_tokens}). "
+                                    f"Skipping this group without upsert or processed-marking"
+                                )
+                            )
+                            continue
+
+                        insights = insights_retry
+
+                    # Append trace for response
+                    if llm_trace_enabled and trace_writer and trace_file_path:
+                        if llm_trace_cfg.get('include_response', True):
+                            trace_writer.append_section(trace_file_path, f"Response: {eni_source_type}/{eni_source_subtype}", insights)
 
                     # Use a per-group ENI composite id
                     group_eni_ids = eni_data['eni_id'].tolist()

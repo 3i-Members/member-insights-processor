@@ -276,3 +276,14 @@ features:
   enable_progress_tracking: true
   enable_error_recovery: true
   enable_memory_optimization: true 
+
+
+debug:
+  enable_debug_mode: true
+  llm_trace:
+    enabled: true
+    output_dir: "logs/llm_traces"
+    include_rendered_prompts: true
+    include_token_stats: true
+    include_response: true
+    file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"

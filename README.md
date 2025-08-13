@@ -646,54 +646,60 @@ This generates `logs/context_preview_{CONTACT_ID}_{TIMESTAMP}.md` with:
 - Fully rendered system prompt per call (with the appended group data)
 - Token stats (base/system context, available for new data, rendered total)
 
+## Debug LLM Tracing (New)
+
+For production debugging and prompt analysis, the system can log detailed LLM traces when `debug.llm_trace.enabled` is set to `true` in `config/config.yaml`.
+
+### Configuration
+
+```yaml
+debug:
+  enable_debug_mode: true
+  llm_trace:
+    enabled: true
+    output_dir: "logs/llm_traces"
+    include_rendered_prompts: true
+    include_token_stats: true
+    include_response: true
+    file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"
+```
+
+### Usage
+
+```bash
+# Process with debug tracing enabled
+python src/main.py --contact-id "CNT-ABC123"
+```
+
+### Output
+
+Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.md` and include:
+
+- **Request sections**: Full rendered system prompt per ENI group (includes `structured_insight.md` template with all variables substituted)
+- **Token Stats**: Detailed token breakdown including:
+  - `existing_summary_tokens`: Tokens in current Supabase summary
+  - `base_tokens`: System prompt + context tokens
+  - `new_data_tokens_used`: Tokens for new data within budget
+  - `rendered_full_tokens`: Total prompt tokens sent to LLM
+- **Response sections**: Complete LLM output per group
+
+### Key Features
+
+- **Production Ready**: Runs during actual processing (not just preview)
+- **Per-Group Detail**: One request/response pair per `(eni_source_type, eni_source_subtype)` group
+- **Token-Loss Protection**: Built-in retry logic when LLM output is smaller than existing summary
+- **Template Verification**: Confirms `{{variable}}` substitution in `structured_insight.md`
+
+### Benefits
+
+- Debug prompt composition issues
+- Verify context variable injection
+- Monitor token usage patterns
+- Analyze LLM response quality
+- Troubleshoot template rendering
+
 ## OpenAI Configuration Notes
 
 - Env var fallback supported: `OPENAI_API_KEY` or `OPEN_AI_KEY`
 - For modern models (gpt-5, o1, gpt-4.1, gpt-4o):
-  - Use `max_completion_tokens` (not `max_tokens`)
-  - Sampling params (temperature/top_p/penalties) are omitted to match API constraints
-  - Completion tokens capped at `128000`
-
-Configure the provider via `processing.ai_provider` in `config/config.yaml`.
-
-## Known Behavior
-
-- Supabase current summary is fetched per call (requery OK)
-- ENI IDs for group upserts use `COMBINED-{type}-{subtype}-{contact}-{count}ENI` to satisfy schema validation
-- BigQuery is queried per group; only that group’s ENIs are marked processed upon success
-
-## Troubleshooting Performance
-
-If overall runtime increases (many groups → many calls):
-- Reduce groups via `processing.filter_config`
-- Lower `processing.max_new_data_tokens_per_group`
-- Increase result caching (e.g., reuse current summary across a run)
-- Consider batching very small groups together (future enhancement)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Support
-
-For support and questions:
-- Create an issue in the repository
-- Check the documentation in the `docs/` directory
-- Review the example configurations and context files
-
-## Changelog
-
-### v1.0.0
-- Initial release with complete pipeline
-- BigQuery integration
-- Gemini Pro AI processing
-- Airtable sync functionality
-- Comprehensive logging and monitoring 
+  - Use `

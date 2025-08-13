@@ -6,6 +6,7 @@ to markdown files with proper metadata headers.
 """
 
 import os
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -407,3 +408,33 @@ def create_markdown_writer(output_directory: Optional[str] = None) -> MarkdownWr
         output_directory = "output/member_summaries/"
     
     return MarkdownWriter(output_directory) 
+
+
+class LLMTraceWriter:
+    def __init__(self, output_dir: str):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _resolve_path(self, contact_id: str, naming_pattern: str) -> Path:
+        import time
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        filename = naming_pattern.replace("{contact_id}", contact_id).replace("{timestamp}", ts)
+        return self.output_dir / filename
+
+    def append_section(
+        self,
+        file_path: Path,
+        title: str,
+        content: str,
+    ) -> None:
+        with open(file_path, 'a', encoding='utf-8') as f:
+            f.write(f"\n## {title}\n\n")
+            f.write(content)
+            f.write("\n")
+
+    def start_trace(self, contact_id: str, naming_pattern: str) -> Path:
+        path = self._resolve_path(contact_id, naming_pattern)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(f"LLM Trace - Contact {contact_id}\n\n")
+        return path 

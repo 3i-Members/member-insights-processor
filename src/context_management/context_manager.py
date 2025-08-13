@@ -3,6 +3,7 @@ import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import logging
+from utils.token_utils import estimate_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +133,8 @@ class ContextManager:
     # Token estimation
     # -----------------------------
     def estimate_tokens(self, text: str) -> int:
-        """Rough token estimator (≈4 chars/token)."""
-        if not text:
-            return 0
-        return max(1, int(len(text) / 4))
+        """Delegate to shared token estimator utility."""
+        return estimate_tokens(text)
 
     # -----------------------------
     # Structured insight retrieval
@@ -278,6 +277,12 @@ class ContextManager:
                 "available_for_new_data": available_for_new_data,
                 "new_data_tokens_used": self.estimate_tokens(new_data_block),
                 "total_rendered_tokens": base_tokens + self.estimate_tokens(new_data_block),
+                # Detailed breakdowns for debugging and monitoring
+                "existing_summary_tokens": self.estimate_tokens(current_structured_insight),
+                "type_context_tokens": self.estimate_tokens(type_ctx),
+                "subtype_context_tokens": self.estimate_tokens(subtype_ctx),
+                "system_prompt_tokens": self.estimate_tokens(system_prompt_template),
+                "rendered_full_tokens": self.estimate_tokens(rendered_full),
             },
             "rows_used": rows_used,
             "rows_total": rows_total,
