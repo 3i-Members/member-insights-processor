@@ -222,13 +222,15 @@ class SupabaseInsightsProcessor:
             contact_id=existing.metadata.contact_id,
             eni_id=existing.metadata.eni_id,
             member_name=existing.metadata.member_name or new_metadata.get('member_name'),
-            eni_source_type=existing.metadata.eni_source_type,
-            eni_source_subtype=existing.metadata.eni_source_subtype,
+            # Do not persist single type/subtype; rely on arrays for cumulative tracking
+            eni_source_type=None,
+            eni_source_subtype=None,
             eni_source_types=self._merge_lists(existing.metadata.eni_source_types, new_metadata.get('eni_source_types')),
             eni_source_subtypes=self._merge_lists(existing.metadata.eni_source_subtypes, new_metadata.get('eni_source_subtypes')),
             generator=existing.metadata.generator,
             system_prompt_key=new_metadata.get('system_prompt_key') or existing.metadata.system_prompt_key,
             context_files=new_metadata.get('context_files') or existing.metadata.context_files,
+            # Increment counters
             record_count=existing.metadata.record_count + new_metadata.get('record_count', 1),
             total_eni_ids=existing.metadata.total_eni_ids + new_metadata.get('total_eni_ids', 1),
             generated_at=existing.metadata.generated_at,  # Keep original generation time

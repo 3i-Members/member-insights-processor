@@ -46,6 +46,7 @@ from output_management.structured_airtable_writer import create_structured_airta
 from utils.enhanced_logger import create_enhanced_logger
 from utils.token_utils import estimate_tokens
 from output_management.markdown_writer import LLMTraceWriter
+from output_management.supabase_airtable_writer import SupabaseAirtableSync
 
 # Configure logging
 logging.basicConfig(
@@ -89,6 +90,7 @@ class MemberInsightsProcessor:
         # Supabase components
         self.supabase_client = None
         self.supabase_processor = None
+        self.supabase_airtable_sync = None
         
         self._initialize_components()
     
@@ -189,6 +191,17 @@ class MemberInsightsProcessor:
                     self.context_manager.supabase_client = self.supabase_client
             except Exception:
                 pass
+            
+            # Initialize Supabase→Airtable sync helper if both sides are available
+            try:
+                if self.supabase_client and self.structured_airtable_writer:
+                    self.supabase_airtable_sync = SupabaseAirtableSync(
+                        supabase_client=self.supabase_client,
+                        airtable_writer=self.structured_airtable_writer
+                    )
+                    logger.info("Initialized Supabase→Airtable sync helper")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Supabase→Airtable sync helper: {e}")
             
             logger.info("All components initialized successfully")
             
@@ -323,7 +336,12 @@ class MemberInsightsProcessor:
             'skipped_eni_ids': [],
             'errors': [],
             'files_created': [],
-            'airtable_records': []
+            'airtable_records': [],
+            'airtable_final_sync': None,
+            # Token-loss diagnostics
+            'token_loss_events': 0,
+            'token_loss_groups_skipped': 0,
+            'token_loss_records_skipped': 0
         }
         
         try:
@@ -363,6 +381,9 @@ class MemberInsightsProcessor:
                 logger.info(f"No ENI combinations to process for contact {contact_id}")
                 result['success'] = True
                 return result
+            
+            # Use a consolidated ENI id so all groups merge into a single Supabase record per contact
+            consolidated_eni_id = f"COMBINED-{contact_id}-ALL"
             
             # Process per group: load, build context, call LLM, upsert, and mark processed per group
             total_loaded = 0
@@ -455,6 +476,8 @@ class MemberInsightsProcessor:
                     )
 
                     if existing_summary_tokens and output_token_estimate < existing_summary_tokens:
+                        # Count token-loss event
+                        result['token_loss_events'] += 1
                         logger.error(
                             (
                                 f"[TOKEN-LOSS] Output tokens ({output_token_estimate}) < existing summary tokens ({existing_summary_tokens}). "
@@ -479,6 +502,10 @@ class MemberInsightsProcessor:
                             result['errors'].append(
                                 f"Retry also failed for {contact_id} {eni_source_type}/{eni_source_subtype}; skipping upsert and processed-marking"
                             )
+                            # Count skipped group and records
+                            group_eni_ids = eni_data['eni_id'].tolist()
+                            result['token_loss_groups_skipped'] += 1
+                            result['token_loss_records_skipped'] += len(group_eni_ids)
                             continue
 
                         output_retry_tokens = estimate_tokens(insights_retry)
@@ -495,6 +522,10 @@ class MemberInsightsProcessor:
                                     f"Skipping this group without upsert or processed-marking"
                                 )
                             )
+                            # Count skipped group and records
+                            group_eni_ids = eni_data['eni_id'].tolist()
+                            result['token_loss_groups_skipped'] += 1
+                            result['token_loss_records_skipped'] += len(group_eni_ids)
                             continue
 
                         insights = insights_retry
@@ -558,11 +589,11 @@ class MemberInsightsProcessor:
                                 if structured_content:
                                     supabase_result, was_created = self.supabase_processor.process_insight(
                                         contact_id=contact_id,
-                                        eni_id=group_eni_id,
+                                        # Use consolidated ENI id so all groups merge into a single record per contact
+                                        eni_id=consolidated_eni_id,
                                         insight_content=structured_content,
                                         metadata={
-                                            'eni_source_type': eni_source_type,
-                                            'eni_source_subtype': eni_source_subtype,
+                                            # Only append to arrays; do not set single-value type/subtype columns
                                             'eni_source_types': [eni_source_type],
                                             'eni_source_subtypes': [eni_source_subtype],
                                             'system_prompt_key': system_prompt_key,
@@ -582,42 +613,8 @@ class MemberInsightsProcessor:
                                 logger.error(f"Error saving to Supabase for contact {contact_id} ({eni_source_type}/{eni_source_subtype}): {e}")
                                 result['errors'].append(f"Supabase save error: {str(e)}")
 
-                        # Sync to Airtable per group (optional)
-                        if self.structured_airtable_writer:
-                            try:
-                                import json as _json
-                                import re as _re
-                                structured_json = None
-                                if insights:
-                                    json_match = _re.search(r'```json\s*(.*?)\s*```', insights, _re.DOTALL)
-                                    if json_match:
-                                        try:
-                                            structured_json = _json.loads(json_match.group(1))
-                                        except _json.JSONDecodeError:
-                                            try:
-                                                structured_json = _json.loads(insights)
-                                            except _json.JSONDecodeError:
-                                                structured_json = {"raw_content": insights}
-                                    else:
-                                        try:
-                                            structured_json = _json.loads(insights)
-                                        except _json.JSONDecodeError:
-                                            structured_json = {"raw_content": insights}
-                                if structured_json:
-                                    airtable_result = self.structured_airtable_writer.create_note_submission_record(
-                                        contact_id=contact_id,
-                                        structured_json=structured_json
-                                    )
-                                    if airtable_result:
-                                        result['airtable_records'].append(airtable_result)
-                                        if self.enhanced_logger:
-                                            self.enhanced_logger.log_airtable_sync(contact_id, True, "structured_insight")
-                                else:
-                                    result['errors'].append("Failed to parse JSON from AI insights for Airtable sync")
-                            except Exception as e:
-                                result['errors'].append(f"Error in structured Airtable sync: {str(e)}")
-                                if self.enhanced_logger:
-                                    self.enhanced_logger.log_airtable_sync(contact_id, False, "structured_insight")
+                        # Sync to Airtable per group (removed - now Supabase-driven after all groups)
+                        # (No-op here to prevent multiple writes per contact)
 
                         # Mark group ENIs as processed
                         records_to_mark = [
@@ -644,6 +641,37 @@ class MemberInsightsProcessor:
                     continue
 
             logger.info(f"Per-group processing complete for contact {contact_id}. Total groups with data: {1 if total_loaded>0 else 0}, total records: {total_loaded}")
+
+            # Token-loss summary for this contact
+            if result['token_loss_events'] or result['token_loss_groups_skipped']:
+                logger.info(
+                    (
+                        f"[TOKEN-LOSS] Summary for {contact_id}: "
+                        f"events={result['token_loss_events']} | "
+                        f"groups_skipped={result['token_loss_groups_skipped']} | "
+                        f"records_skipped={result['token_loss_records_skipped']}"
+                    )
+                )
+
+            # Perform single Supabase-driven Airtable sync per contact (post-processing)
+            if not dry_run and self.supabase_airtable_sync and self.structured_airtable_writer:
+                try:
+                    sync_res = self.supabase_airtable_sync.sync_contact_to_airtable(contact_id, force_update=True)
+                    result['airtable_final_sync'] = {
+                        'success': sync_res.success,
+                        'action': sync_res.action,
+                        'airtable_record_id': sync_res.airtable_record_id,
+                        'error_message': sync_res.error_message
+                    }
+                    # Keep count compatibility with existing summaries
+                    result['airtable_records'].append(result['airtable_final_sync'])
+                    if self.enhanced_logger:
+                        self.enhanced_logger.log_airtable_sync(contact_id, sync_res.success, f"supabase_post_process({sync_res.action})")
+                except Exception as e:
+                    err = f"Post-processing Airtable sync failed for {contact_id}: {e}"
+                    result['errors'].append(err)
+                    logger.error(err)
+
             result['success'] = len(result['errors']) == 0
             
             return result
@@ -1027,6 +1055,10 @@ CONTEXT PACKAGES BY ENI GROUP:
             'total_processed_eni_ids': 0,
             'total_files_created': 0,
             'total_airtable_records': 0,
+            # Aggregated token-loss stats
+            'token_loss_events': 0,
+            'token_loss_groups_skipped': 0,
+            'token_loss_records_skipped': 0,
             'contact_results': {},
             'errors': [],
             'start_time': datetime.now().isoformat(),
@@ -1067,6 +1099,10 @@ CONTEXT PACKAGES BY ENI GROUP:
                         summary['total_processed_eni_ids'] += len(result['processed_eni_ids'])
                         summary['total_files_created'] += len(result['files_created'])
                         summary['total_airtable_records'] += len(result['airtable_records'])
+                        # Aggregate token-loss stats
+                        summary['token_loss_events'] += result.get('token_loss_events', 0)
+                        summary['token_loss_groups_skipped'] += result.get('token_loss_groups_skipped', 0)
+                        summary['token_loss_records_skipped'] += result.get('token_loss_records_skipped', 0)
                     else:
                         summary['failed_contacts'] += 1
                         summary['errors'].extend(result['errors'])
@@ -1093,6 +1129,9 @@ Processing Complete:
 - Files Created: {summary['total_files_created']}
 - Airtable Records: {summary['total_airtable_records']}
 - Errors: {len(summary['errors'])}
+- Token-Loss Events: {summary['token_loss_events']}
+- Token-Loss Groups Skipped: {summary['token_loss_groups_skipped']}
+- Token-Loss Records Skipped: {summary['token_loss_records_skipped']}
 """)
             
             return summary
@@ -1283,6 +1322,13 @@ def main():
             print(f"Success: {result['success']}")
             print(f"Processed ENI IDs: {len(result['processed_eni_ids'])}")
             print(f"Errors: {len(result['errors'])}")
+            # Token-loss summary for single-contact run
+            if result.get('token_loss_events') or result.get('token_loss_groups_skipped'):
+                print(
+                    f"Token-Loss Summary: events={result.get('token_loss_events', 0)} | "
+                    f"groups_skipped={result.get('token_loss_groups_skipped', 0)} | "
+                    f"records_skipped={result.get('token_loss_records_skipped', 0)}"
+                )
         else:
             # Process multiple contacts
             # Ensure BigQuery connection first

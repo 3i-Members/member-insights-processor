@@ -703,3 +703,24 @@ Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.
 - Env var fallback supported: `OPENAI_API_KEY` or `OPEN_AI_KEY`
 - For modern models (gpt-5, o1, gpt-4.1, gpt-4o):
   - Use `
+
+## Recent Changes (August 2025)
+
+- Supabase-driven, single Airtable sync per contact after all ENI groups complete
+- Consolidated Supabase upserts under `eni_id = COMBINED-{contact_id}-ALL`
+- Append-only arrays: `eni_source_types`, `eni_source_subtypes`; single columns are no longer updated
+- Iterative counters: `total_eni_ids`, `record_count`; `version` increments on every update
+- Token-loss protection and reporting: retry once; if still smaller than existing summary, skip group and tally in logs and single-contact output
+- Fully-rendered prompt usage with `ContextManager` and `{{variable}}` substitution
+- Debug LLM tracing for rendered prompts, token stats, and responses (see Debug LLM Tracing section)
+
+### CLI example (single contact, foreground)
+
+```bash
+PYTHONPATH="src" python -m src.main --contact-id CNT-XXXXXXX --system-prompt structured_insight
+```
+
+### Token-loss report
+
+- Per-contact log line: `[TOKEN-LOSS] Summary for <contact_id>: events={n} | groups_skipped={m} | records_skipped={k}`
+- Single-contact console output now includes the same summary line
