@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "contact_id": "CNT-ZHS002429",
+    "eni_id": "COMBINED-recurroo-social-CNT-ZHS002429-1ENI",
+    "member_name": null,
+    "eni_source_type": "recurroo",
+    "eni_source_subtype": "social",
+    "generated_at": "2025-08-15T13:04:46.135990",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "recurroo/social",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "raw_content": "{{current_structured_insight}}"
+  }
+}

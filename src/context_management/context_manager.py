@@ -140,28 +140,50 @@ class ContextManager:
     # Structured insight retrieval
     # -----------------------------
     def get_current_structured_insight(self, contact_id: str, system_prompt_key: str) -> str:
+        """
+        Return the current structured insight as a JSON string with keys:
+        personal, business, investing, 3i, deals, introductions
+        """
+        import json as _json
+        def _as_json(personal: str = "", business: str = "", investing: str = "",
+                     three_i: str = "", deals: str = "", introductions: str = "") -> str:
+            return _json.dumps({
+                "personal": personal or "",
+                "business": business or "",
+                "investing": investing or "",
+                "3i": three_i or "",
+                "deals": deals or "",
+                "introductions": introductions or "",
+            }, ensure_ascii=False, indent=2)
+
         if not self.supabase_client:
-            return ""
+            return _as_json()
         try:
-            existing = self.supabase_client.get_insight_by_contact_id(contact_id)
+            existing = self.supabase_client.get_latest_insight_by_contact_id(contact_id, generator='structured_insight')
             if not existing:
-                return ""
-            personal = getattr(existing, "personal", "") or ""
-            business = getattr(existing, "business", "") or ""
-            investing = getattr(existing, "investing", "") or ""
-            three_i = getattr(existing, "three_i", "") or getattr(existing, "threeI", "") or ""
-            deals = getattr(existing, "deals", "") or ""
-            introductions = getattr(existing, "introductions", "") or ""
-            return (
-                f"## Personal\n{personal}\n\n"
-                f"## Business\n{business}\n\n"
-                f"## Investing\n{investing}\n\n"
-                f"## 3i\n{three_i}\n\n"
-                f"## Deals\n{deals}\n\n"
-                f"## Introductions\n{introductions}\n"
-            )
+                return _as_json()
+
+            insights_content = existing.insights
+            if isinstance(insights_content, dict):
+                return _as_json(
+                    personal=insights_content.get('personal', ''),
+                    business=insights_content.get('business', ''),
+                    investing=insights_content.get('investing', ''),
+                    three_i=insights_content.get('3i') or insights_content.get('three_i', ''),
+                    deals=insights_content.get('deals', ''),
+                    introductions=insights_content.get('introductions', ''),
+                )
+            else:
+                return _as_json(
+                    personal=getattr(insights_content, 'personal', '') or '',
+                    business=getattr(insights_content, 'business', '') or '',
+                    investing=getattr(insights_content, 'investing', '') or '',
+                    three_i=getattr(insights_content, 'three_i', '') or '',
+                    deals=getattr(insights_content, 'deals', '') or '',
+                    introductions=getattr(insights_content, 'introductions', '') or '',
+                )
         except Exception:
-            return ""
+            return _as_json()
 
     # -----------------------------
     # Build 'new_data_to_process' within token budget

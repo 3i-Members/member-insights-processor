@@ -34,9 +34,7 @@ class InsightMetadata(BaseModel):
     eni_id: Optional[str] = Field(None, max_length=100, description="ENI identifier")
     member_name: Optional[str] = Field(None, max_length=255, description="Member display name")
     
-    # ENI metadata
-    eni_source_type: Optional[str] = Field(None, max_length=100, description="Primary ENI source type")
-    eni_source_subtype: Optional[str] = Field(None, max_length=100, description="Primary ENI source subtype")
+    # ENI metadata (arrays only - single values dropped)
     eni_source_types: Optional[List[str]] = Field(None, description="All ENI source types for combined insights")
     eni_source_subtypes: Optional[List[str]] = Field(None, description="All ENI source subtypes for combined insights")
     
@@ -53,9 +51,6 @@ class InsightMetadata(BaseModel):
     # Status and versioning
     processing_status: ProcessingStatus = Field(default=ProcessingStatus.COMPLETED, description="Processing status")
     version: int = Field(default=1, ge=1, description="Version number")
-    
-    # Additional metadata
-    additional_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata as JSON")
 
 
 class StructuredInsightContent(BaseModel):
@@ -100,12 +95,13 @@ class StructuredInsightContent(BaseModel):
         """Validate that all content has proper citations."""
         validation_errors = []
         
-        for field_name in ['personal', 'business', 'investing', 'three_i', 'deals', 'introductions']:
-            content = getattr(self, field_name)
-            if content:
-                citations = self.extract_citations(content)
-                if not citations:
-                    validation_errors.append(f"Missing citations in {field_name}")
+        for field_name, content in [
+            ("personal", self.personal), ("business", self.business), 
+            ("investing", self.investing), ("three_i", self.three_i),
+            ("deals", self.deals), ("introductions", self.introductions)
+        ]:
+            if content and not self.extract_citations(content):
+                validation_errors.append(f"Missing citations in {field_name}")
         
         return {"errors": validation_errors}
 
@@ -121,14 +117,14 @@ class StructuredInsight(BaseModel):
     # Core data
     metadata: InsightMetadata = Field(..., description="Insight metadata")
     insights: Union[StructuredInsightContent, Dict[str, Any]] = Field(..., description="Structured insight content")
-    
-    # Extracted fields for easier querying
-    personal: Optional[str] = Field(None, description="Extracted personal section")
-    business: Optional[str] = Field(None, description="Extracted business section")
-    investing: Optional[str] = Field(None, description="Extracted investing section")
-    three_i: Optional[str] = Field(None, description="Extracted 3i section")
-    deals: Optional[str] = Field(None, description="Extracted deals section")
-    introductions: Optional[str] = Field(None, description="Extracted introductions section")
+
+    # Versioning
+    is_latest: Optional[bool] = Field(None, description="Whether this is the latest version for contact_id + generator")
+
+    # Token/cost tracking (top-level)
+    est_input_tokens: Optional[int] = Field(None, description="Sum of input tokens across accepted iterations for this contact")
+    est_insights_tokens: Optional[int] = Field(None, description="Estimated tokens of the latest consolidated insights")
+    generation_time_seconds: Optional[float] = Field(None, description="Sum of generation durations across accepted iterations for this contact")
 
     class Config:
         use_enum_values = True
@@ -136,29 +132,6 @@ class StructuredInsight(BaseModel):
             datetime: lambda v: v.isoformat(),
             UUID: lambda v: str(v)
         }
-
-    @model_validator(mode='after')
-    def extract_insight_sections(self):
-        """Extract insight sections from the insights field."""
-        insights = self.insights
-        
-        if isinstance(insights, dict):
-            # Extract each section
-            self.personal = insights.get('personal')
-            self.business = insights.get('business')
-            self.investing = insights.get('investing')
-            self.three_i = insights.get('3i') or insights.get('three_i')
-            self.deals = insights.get('deals')
-            self.introductions = insights.get('introductions')
-        elif isinstance(insights, StructuredInsightContent):
-            self.personal = insights.personal
-            self.business = insights.business
-            self.investing = insights.investing
-            self.three_i = insights.three_i
-            self.deals = insights.deals
-            self.introductions = insights.introductions
-        
-        return self
 
     def to_db_dict(self) -> Dict[str, Any]:
         """Convert to dictionary suitable for database insertion."""
@@ -168,9 +141,7 @@ class StructuredInsight(BaseModel):
             'eni_id': self.metadata.eni_id,
             'member_name': self.metadata.member_name,
             
-            # ENI metadata
-            'eni_source_type': self.metadata.eni_source_type,
-            'eni_source_subtype': self.metadata.eni_source_subtype,
+            # ENI metadata (arrays only)
             'eni_source_types': self.metadata.eni_source_types,
             'eni_source_subtypes': self.metadata.eni_source_subtypes,
             
@@ -181,25 +152,27 @@ class StructuredInsight(BaseModel):
             'record_count': self.metadata.record_count,
             'total_eni_ids': self.metadata.total_eni_ids,
             
-            # Content
+            # Content (all insights stored in single JSONB column)
             'insights': self.insights.dict() if isinstance(self.insights, StructuredInsightContent) else self.insights,
-            
-            # Extracted sections
-            'personal': self.personal,
-            'business': self.business,
-            'investing': self.investing,
-            'three_i': self.three_i,
-            'deals': self.deals,
-            'introductions': self.introductions,
             
             # Timestamps and status
             'generated_at': self.metadata.generated_at.isoformat() if isinstance(self.metadata.generated_at, datetime) else self.metadata.generated_at,
             'processing_status': self.metadata.processing_status.value,
             'version': self.metadata.version,
-            'additional_metadata': self.metadata.additional_metadata,
+            
+            # Versioning
+            'is_latest': self.is_latest,
         }
         
-        # Remove None values
+        # Token/cost tracking: include only when present (not None)
+        if self.est_input_tokens is not None:
+            data['est_input_tokens'] = self.est_input_tokens
+        if self.est_insights_tokens is not None:
+            data['est_insights_tokens'] = self.est_insights_tokens
+        if self.generation_time_seconds is not None:
+            data['generation_time_seconds'] = self.generation_time_seconds
+        
+        # Remove None values to avoid SQL insert issues
         return {k: v for k, v in data.items() if v is not None}
 
     @classmethod
@@ -211,8 +184,6 @@ class StructuredInsight(BaseModel):
             contact_id=data['contact_id'],
             eni_id=data.get('eni_id'),
             member_name=data.get('member_name'),
-            eni_source_type=data.get('eni_source_type'),
-            eni_source_subtype=data.get('eni_source_subtype'),
             eni_source_types=data.get('eni_source_types'),
             eni_source_subtypes=data.get('eni_source_subtypes'),
             generator=data.get('generator', 'structured_insight'),
@@ -223,7 +194,6 @@ class StructuredInsight(BaseModel):
             generated_at=data.get('generated_at', datetime.now()),
             processing_status=ProcessingStatus(data.get('processing_status', 'completed')),
             version=data.get('version', 1),
-            additional_metadata=data.get('additional_metadata'),
         )
         
         # Create insights content
@@ -239,143 +209,191 @@ class StructuredInsight(BaseModel):
             updated_at=data.get('updated_at'),
             metadata=metadata,
             insights=insights,
+            # Versioning
+            is_latest=data.get('is_latest'),
+            # Map token/cost tracking if present
+            est_input_tokens=data.get('est_input_tokens'),
+            est_insights_tokens=data.get('est_insights_tokens'),
+            generation_time_seconds=data.get('generation_time_seconds'),
         )
 
 
 class LegacyInsightData(BaseModel):
     """Legacy insight data structure for backward compatibility."""
     
-    metadata: Dict[str, Any] = Field(..., description="Legacy metadata structure")
-    insights: Union[Dict[str, Any], str] = Field(..., description="Legacy insights content")
+    contact_id: str
+    content: Dict[str, Any]
+    metadata: Optional[Dict[str, Any]] = None
     
     def to_structured_insight(self) -> StructuredInsight:
-        """Convert legacy data to new structured format."""
-        
-        # Extract metadata
-        meta = self.metadata
-        metadata = InsightMetadata(
-            contact_id=meta.get('contact_id', ''),
-            eni_id=meta.get('eni_id'),
-            member_name=meta.get('member_name'),
-            eni_source_type=meta.get('eni_source_type'),
-            eni_source_subtype=meta.get('eni_source_subtype'),
-            eni_source_types=meta.get('eni_source_types'),
-            eni_source_subtypes=meta.get('eni_source_subtypes'),
-            generator=meta.get('generator', 'structured_insight'),
-            system_prompt_key=meta.get('system_prompt_key'),
-            context_files=meta.get('context_files'),
-            record_count=meta.get('record_count', 1),
-            total_eni_ids=meta.get('total_eni_ids', 1),
-            generated_at=datetime.fromisoformat(meta['generated_at']) if meta.get('generated_at') else datetime.now(),
+        """Convert legacy data to current StructuredInsight format."""
+        # Extract personal, business, etc. from content if available
+        insights_content = StructuredInsightContent(
+            personal=self.content.get('personal', ''),
+            business=self.content.get('business', ''),
+            investing=self.content.get('investing', ''),
+            three_i=self.content.get('3i', ''),
+            deals=self.content.get('deals', ''),
+            introductions=self.content.get('introductions', '')
         )
         
-        # Handle insights content
-        insights_content = self.insights
-        if isinstance(insights_content, str):
-            # Try to parse as JSON
-            try:
-                insights_content = json.loads(insights_content)
-            except json.JSONDecodeError:
-                insights_content = {"raw_content": insights_content}
-        
-        # Handle raw_content field from legacy format
-        if isinstance(insights_content, dict) and 'raw_content' in insights_content:
-            raw_content = insights_content['raw_content']
-            # Try to extract JSON from markdown code blocks
-            json_match = re.search(r'```json\s*(.*?)\s*```', raw_content, re.DOTALL)
-            if json_match:
-                try:
-                    insights_content = json.loads(json_match.group(1))
-                except json.JSONDecodeError:
-                    insights_content = {"error": "Could not parse legacy raw_content"}
-        
-        # Create structured content
-        if isinstance(insights_content, dict):
-            structured_content = StructuredInsightContent(**insights_content)
-        else:
-            structured_content = insights_content
+        # Create metadata
+        metadata = InsightMetadata(
+            contact_id=self.contact_id,
+            eni_id=self.metadata.get('eni_id') if self.metadata else None,
+            member_name=self.metadata.get('member_name') if self.metadata else None,
+            generator=self.metadata.get('generator', 'legacy_import') if self.metadata else 'legacy_import'
+        )
         
         return StructuredInsight(
             metadata=metadata,
-            insights=structured_content
+            insights=insights_content
         )
-
-
-# Type guards and validation functions
-
-def is_valid_contact_id(contact_id: str) -> bool:
-    """Validate contact ID format."""
-    if not contact_id or not isinstance(contact_id, str):
-        return False
-    # Typical format: CNT-xxxxxxxxx
-    return bool(re.match(r'^CNT-[a-zA-Z0-9]{8,}$', contact_id))
-
-
-def is_valid_eni_id(eni_id: str) -> bool:
-    """Validate ENI ID format."""
-    if not eni_id or not isinstance(eni_id, str):
-        return False
-    # Can be single ENI or combined format
-    return bool(re.match(r'^(ENI-\d+|COMBINED-.+)$', eni_id))
-
-
-def validate_structured_insight_json(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
-    """
-    Validate structured insight JSON data.
-    
-    Returns:
-        Tuple of (is_valid, error_messages)
-    """
-    errors = []
-    
-    try:
-        # Try to create a StructuredInsight instance
-        if 'metadata' in data and 'insights' in data:
-            # New format
-            insight = StructuredInsight(**data)
-        else:
-            # Legacy format
-            legacy = LegacyInsightData(**data)
-            insight = legacy.to_structured_insight()
-        
-        # Additional validation
-        content_validation = insight.insights.validate_citations() if isinstance(insight.insights, StructuredInsightContent) else {"errors": []}
-        errors.extend(content_validation.get("errors", []))
-        
-    except Exception as e:
-        errors.append(f"Schema validation failed: {str(e)}")
-    
-    return len(errors) == 0, errors
 
 
 def normalize_insight_data(data: Dict[str, Any]) -> StructuredInsight:
     """
-    Normalize insight data from various formats to StructuredInsight.
+    Normalize insight data from various sources to StructuredInsight format.
     
-    Handles both legacy and new formats.
+    Args:
+        data: Raw insight data dictionary
+        
+    Returns:
+        StructuredInsight: Normalized StructuredInsight object
     """
-    try:
-        if 'metadata' in data and 'insights' in data:
-            # New format
-            return StructuredInsight(**data)
-        else:
-            # Legacy format
-            legacy = LegacyInsightData(**data)
-            return legacy.to_structured_insight()
-    except Exception as e:
-        logger.error(f"Failed to normalize insight data: {str(e)}")
-        raise ValueError(f"Invalid insight data format: {str(e)}")
+    normalized = {}
+    
+    # Handle different contact_id field names
+    contact_id = None
+    for contact_field in ['contact_id', 'contactId', 'Contact_ID']:
+        if contact_field in data:
+            contact_id = data[contact_field]
+            break
+    
+    # Also check in metadata if not found at top level
+    if not contact_id and 'metadata' in data:
+        metadata_dict = data['metadata']
+        for contact_field in ['contact_id', 'contactId', 'Contact_ID']:
+            if contact_field in metadata_dict:
+                contact_id = metadata_dict[contact_field]
+                break
+    
+    if not contact_id:
+        raise ValueError("Missing contact_id in data")
+    
+    # Handle different insight content structures
+    insights_content = {}
+    if 'insights' in data and isinstance(data['insights'], dict):
+        insights_content = data['insights']
+    elif 'content' in data and isinstance(data['content'], dict):
+        insights_content = data['content']
+    else:
+        # Try to extract from top-level fields
+        for field in ['personal', 'business', 'investing', '3i', 'deals', 'introductions']:
+            if field in data:
+                insights_content[field] = data[field]
+    
+    # Create structured insight content
+    structured_content = StructuredInsightContent(**insights_content)
+    
+    # Create metadata
+    metadata_dict = data.get('metadata', {})
+    metadata = InsightMetadata(
+        contact_id=contact_id,
+        eni_id=data.get('eni_id') or metadata_dict.get('eni_id'),
+        member_name=data.get('member_name') or metadata_dict.get('member_name'),
+        eni_source_types=data.get('eni_source_types') or metadata_dict.get('eni_source_types'),
+        eni_source_subtypes=data.get('eni_source_subtypes') or metadata_dict.get('eni_source_subtypes'),
+        generator=data.get('generator') or metadata_dict.get('generator', 'structured_insight'),
+        system_prompt_key=data.get('system_prompt_key') or metadata_dict.get('system_prompt_key'),
+        context_files=data.get('context_files') or metadata_dict.get('context_files'),
+        record_count=data.get('record_count') or metadata_dict.get('record_count', 1),
+        total_eni_ids=data.get('total_eni_ids') or metadata_dict.get('total_eni_ids', 1),
+        generated_at=metadata_dict.get('generated_at', datetime.now()),
+        processing_status=ProcessingStatus(metadata_dict.get('processing_status', 'completed')),
+        version=metadata_dict.get('version', 1),
+    )
+    
+    return StructuredInsight(
+        metadata=metadata,
+        insights=structured_content,
+        est_input_tokens=data.get('est_input_tokens'),
+        est_insights_tokens=data.get('est_insights_tokens'),
+        generation_time_seconds=data.get('generation_time_seconds'),
+    )
 
 
-# Export all important classes and functions
-__all__ = [
-    'ProcessingStatus',
-    'InsightMetadata',
-    'StructuredInsightContent', 
-    'StructuredInsight',
-    'LegacyInsightData',
-    'is_valid_contact_id',
-    'is_valid_eni_id',
-    'validate_structured_insight_json',
-    'normalize_insight_data',
-] 
+def is_valid_contact_id(contact_id: str) -> bool:
+    """
+    Validate contact ID format.
+    
+    Args:
+        contact_id: Contact identifier to validate
+        
+    Returns:
+        bool: True if valid format
+    """
+    if not contact_id or not isinstance(contact_id, str):
+        return False
+    
+    # Pattern: CNT- followed by at least 6 alphanumeric characters  
+    pattern = r'^CNT-[A-Za-z0-9]{6,}$'
+    return bool(re.match(pattern, contact_id))
+
+
+def create_insight_from_ai_response(
+    contact_id: str,
+    ai_response: str,
+    metadata: Optional[Dict[str, Any]] = None
+) -> StructuredInsight:
+    """
+    Create a StructuredInsight from AI response text.
+    
+    Args:
+        contact_id: Contact identifier
+        ai_response: AI-generated insight text
+        metadata: Optional metadata dictionary
+        
+    Returns:
+        StructuredInsight: Parsed and validated insight
+    """
+    # Try to parse JSON from AI response
+    insights_data = {}
+    
+    # Try to extract JSON from markdown code blocks
+    json_match = re.search(r'```json\s*(.*?)\s*```', ai_response, re.DOTALL)
+    if json_match:
+        try:
+            insights_data = json.loads(json_match.group(1))
+        except json.JSONDecodeError:
+            pass
+    
+    # If no JSON block found, try to parse entire response as JSON
+    if not insights_data:
+        try:
+            insights_data = json.loads(ai_response)
+        except json.JSONDecodeError:
+            # Fallback: create basic structure with raw content
+            insights_data = {
+                "personal": "",
+                "business": "",
+                "investing": "",
+                "3i": "",
+                "deals": "",
+                "introductions": "",
+                "raw_content": ai_response
+            }
+    
+    # Create insight content
+    insights_content = StructuredInsightContent(**insights_data)
+    
+    # Create metadata
+    insight_metadata = InsightMetadata(
+        contact_id=contact_id,
+        **(metadata or {})
+    )
+    
+    return StructuredInsight(
+        metadata=insight_metadata,
+        insights=insights_content
+    ) 

@@ -193,20 +193,25 @@ The system now uses **intelligent upsert logic**:
 1. **Load existing insights** from Supabase before processing
 2. **Merge new data** with existing insights automatically  
 3. **Save to Supabase** with PostgreSQL JSONB for fast queries
-4. **Sync to Airtable** independently using decoupled service
+4. **Sync to Airtable** independently using decoupled service (post-processing)
+   - Consolidated upserts under a single per-contact ENI ID: `COMBINED-{contact_id}-ALL`
+   - Versioning maintained via `is_latest` flag and incremented `version`
 
 ### 🎯 **Decoupled Airtable Sync**
 
 Test the new Airtable sync that pulls from Supabase:
 
 ```bash
-# Test Supabase-powered Airtable sync for specific contact
+# Test Supabase-powered Airtable sync for specific contact (from tests)
 python test_airtable_sync.py
 
+# Bulk sync all latest insights where is_latest = true (new standalone script)
+PYTHONPATH="src" python scripts/airtable_sync_insights.py --limit 1000 --force
+
 # This will:
-# 1. Pull structured insight from Supabase
-# 2. Sync to Airtable on-demand
-# 3. Only process specified contact IDs (no database flooding)
+# 1. Select rows from Supabase where is_latest = true and generator='structured_insight'
+# 2. For each contact_id, fetch the latest insight and write a note submission to Airtable
+# 3. Run decoupled from the main processing pipeline
 ```
 
 ### 📊 **Memory Benefits**
@@ -545,11 +550,17 @@ The pipeline now uses a consolidated `ContextManager` to assemble the full conte
   - Load and render the system prompt template (`config/system_prompts/structured_insight.md`)
   - Fetch the latest existing structured insight from Supabase (if available)
   - Build the four context variables for the template:
-    - `{{current_structured_insight}}`
+    - `{{current_structured_insight}}` (JSON string; see below)
     - `{{eni_source_type_context}}`
     - `{{eni_source_subtype_context}}`
     - `{{new_data_to_process}}` (rows are truncated to fit the remaining token budget)
   - Estimate tokens and enforce budgets before adding new rows
+
+### Context 1 Now Uses JSON
+
+- The `{{current_structured_insight}}` variable is injected as a JSON object string with fields:
+  - `personal`, `business`, `investing`, `3i`, `deals`, `introductions`
+- If no prior summary exists, an all-empty JSON object is provided. This improves reliability for the LLM to append new content while preserving structure.
 
 ### Token Budget Settings
 
@@ -687,7 +698,7 @@ Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.
 
 - **Production Ready**: Runs during actual processing (not just preview)
 - **Per-Group Detail**: One request/response pair per `(eni_source_type, eni_source_subtype)` group
-- **Token-Loss Protection**: Built-in retry logic when LLM output is smaller than existing summary
+- **Token metrics**: Rendered prompt tokens and output token estimates per group
 - **Template Verification**: Confirms `{{variable}}` substitution in `structured_insight.md`
 
 ### Benefits
@@ -710,7 +721,9 @@ Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.
 - Consolidated Supabase upserts under `eni_id = COMBINED-{contact_id}-ALL`
 - Append-only arrays: `eni_source_types`, `eni_source_subtypes`; single columns are no longer updated
 - Iterative counters: `total_eni_ids`, `record_count`; `version` increments on every update
-- Token-loss protection and reporting: retry once; if still smaller than existing summary, skip group and tally in logs and single-contact output
+- Context 1 now provided as JSON (not markdown) to improve LLM adherence to structure
+- Robust insight parsing: JSON is preferred; markdown responses are parsed into JSON sections before upsert
+- Token-loss retry is disabled for versioned insights; outputs are accepted and versioned
 - Fully-rendered prompt usage with `ContextManager` and `{{variable}}` substitution
 - Debug LLM tracing for rendered prompts, token stats, and responses (see Debug LLM Tracing section)
 

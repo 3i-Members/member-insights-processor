@@ -106,7 +106,7 @@ class TestTableOperations:
         # Mock successful operations
         mock_client.table.return_value.select.return_value.limit.return_value.execute.return_value = Mock()
         mock_client.table.return_value.insert.return_value.execute.return_value.data = [{
-            'id': 'test-uuid',
+            'id': '550e8400-e29b-41d4-a716-446655440000',
             'contact_id': 'CNT-test123',
             'eni_id': 'ENI-test456',
             'created_at': datetime.now().isoformat(),
@@ -184,7 +184,7 @@ class TestSchemaCompatibility:
         # Should normalize without errors
         normalized = normalize_insight_data(new_data)
         assert normalized.metadata.contact_id == "CNT-new123"
-        assert normalized.personal == "New personal info"
+        assert normalized.insights.personal == "New personal info"
 
 
 class TestConfigurationValidation:
@@ -234,7 +234,7 @@ class TestRetryLogic:
         mock_client.table.return_value.insert.return_value.execute.side_effect = [
             Exception("Network error"),
             Exception("Timeout error"),
-            Mock(data=[{'id': 'test-uuid', 'contact_id': 'CNT-test'}])
+            Mock(data=[{'id': '550e8400-e29b-41d4-a716-446655440001', 'contact_id': 'CNT-test'}])
         ]
         
         # Create test insight

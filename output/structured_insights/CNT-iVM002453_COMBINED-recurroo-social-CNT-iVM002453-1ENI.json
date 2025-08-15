@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "contact_id": "CNT-iVM002453",
+    "eni_id": "COMBINED-recurroo-social-CNT-iVM002453-1ENI",
+    "member_name": null,
+    "eni_source_type": "recurroo",
+    "eni_source_subtype": "social",
+    "generated_at": "2025-08-13T13:46:48.087363",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "recurroo/social",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "personal": "* Neel Shah is an entrepreneur and investor.\n  * [2024-09-19,ENI-01635952101530456748,recurroo]\n* Interests: Music; Poker; Travel; Watches.\n  * [2024-09-19,ENI-3082568178235265761,recurroo]",
+    "business": "* Founder of EZ Newswire — an AI-powered platform with a data layer that enables businesses to create and amplify their news across channels.\n  * [2024-09-19,ENI-01635952101530456748,recurroo]",
+    "investing": "* 15 years in investment management, including a role at Oaktree; specialized in distressed and real estate investing.\n  * [2024-09-19,ENI-01635952101530456748,recurroo]\n* Currently working on Direct Deals (actively sourcing/executing direct investments).\n  * [2024-09-19,ENI-5443809287751809668,recurroo]\n* Interested in exploring the following asset classes: Hedge Funds; Private Equity; Real Estate.\n  * [2024-09-19,ENI-02653695554607985515,recurroo]\n* Interested in exploring the following industry sectors: Artificial Intelligence (AI); Business Services; Cannabis; Entertainment; Finance; Logistics; Software / SaaS; Space; TMT; Technology.\n  * [2024-09-19,ENI-08447133472137636722,recurroo]",
+    "3i": "* Currently focused on direct deals (sourcing and execution).\n  * [2024-09-19,ENI-5443809287751809668,recurroo]",
+    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- Distressed debt / stressed credit\n  - [2024-09-19,ENI-01635952101530456748,recurroo]\n- Real estate investing (sourcing, diligencing, execution)\n  - [2024-09-19,ENI-01635952101530456748,recurroo]\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Direct Deals (direct co-investments / direct equity investments)\n  - [2024-09-19,ENI-5443809287751809668,recurroo]\n- Hedge Funds\n  - [2024-09-19,ENI-02653695554607985515,recurroo]\n- Private Equity\n  - [2024-09-19,ENI-02653695554607985515,recurroo]\n- Artificial Intelligence (AI)\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Business Services\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Cannabis\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Entertainment\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Finance\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Logistics\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Software / SaaS\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Space\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- TMT (Technology, Media, Telecom)\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n- Technology\n  - [2024-09-19,ENI-08447133472137636722,recurroo]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- ",
+    "introductions": "**Looking to meet:**\n\n**Avoid introductions to:**"
+  }
+}

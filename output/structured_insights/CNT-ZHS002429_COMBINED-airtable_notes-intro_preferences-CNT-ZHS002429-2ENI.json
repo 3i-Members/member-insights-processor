@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "contact_id": "CNT-ZHS002429",
+    "eni_id": "COMBINED-airtable_notes-intro_preferences-CNT-ZHS002429-2ENI",
+    "member_name": null,
+    "eni_source_type": "airtable_notes",
+    "eni_source_subtype": "intro_preferences",
+    "generated_at": "2025-08-15T13:03:59.559840",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "airtable_notes/intro_preferences",
+    "record_count": 2,
+    "total_eni_ids": 2
+  },
+  "insights": {
+    "raw_content": "{{current_structured_insight}}"
+  }
+}

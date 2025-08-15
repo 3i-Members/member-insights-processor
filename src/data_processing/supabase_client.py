@@ -20,12 +20,11 @@ import json
 from utils.token_utils import estimate_tokens
 
 from .schema import (
-    StructuredInsight, 
+    StructuredInsight,
     InsightMetadata,
     StructuredInsightContent,
     ProcessingStatus,
     is_valid_contact_id,
-    is_valid_eni_id,
     normalize_insight_data
 )
 
@@ -189,6 +188,47 @@ class SupabaseInsightsClient:
             raise SupabaseOperationError(f"Failed to create insight: {str(e)}")
     
     @retry_on_failure(max_retries=3)
+    def get_latest_insight_by_contact_id(self, contact_id: str, generator: str = "structured_insight") -> Optional[StructuredInsight]:
+        """
+        Get the latest structured insight for a specific contact and generator.
+        
+        Args:
+            contact_id: Contact identifier
+            generator: Generator identifier (default: "structured_insight")
+            
+        Returns:
+            StructuredInsight: Latest insight record or None if not found
+            
+        Raises:
+            SupabaseOperationError: If retrieval fails
+        """
+        client = self._ensure_connection()
+        
+        try:
+            if not is_valid_contact_id(contact_id):
+                raise ValueError(f"Invalid contact_id format: {contact_id}")
+                
+            result = client.table(self.TABLE_NAME)\
+                           .select("*")\
+                           .eq("contact_id", contact_id)\
+                           .eq("generator", generator)\
+                           .eq("is_latest", True)\
+                           .limit(1)\
+                           .execute()
+            
+            if result.data:
+                insight = StructuredInsight.from_db_dict(result.data[0])
+                logger.debug(f"Retrieved latest insight for contact_id: {contact_id}")
+                return insight
+            
+            logger.debug(f"No latest insight found for contact_id: {contact_id}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve latest insight for contact_id {contact_id}: {str(e)}")
+            raise SupabaseOperationError(f"Failed to retrieve latest insight: {str(e)}")
+
+    @retry_on_failure(max_retries=3)
     def get_insight_by_contact_id(self, contact_id: str) -> Optional[StructuredInsight]:
         """
         Retrieve insight by contact ID.
@@ -252,9 +292,6 @@ class SupabaseInsightsClient:
             if not is_valid_contact_id(contact_id):
                 raise ValueError(f"Invalid contact_id format: {contact_id}")
                 
-            if not is_valid_eni_id(eni_id):
-                raise ValueError(f"Invalid eni_id format: {eni_id}")
-            
             result = client.table(self.TABLE_NAME)\
                           .select("*")\
                           .eq("contact_id", contact_id)\

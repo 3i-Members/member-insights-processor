@@ -344,6 +344,11 @@ class MemberInsightsProcessor:
             'token_loss_records_skipped': 0
         }
         
+        # Per-contact token metrics summary (accumulate accepted iterations)
+        contact_est_input_tokens = 0
+        contact_est_insights_tokens_latest = 0
+        contact_generation_time_seconds = 0.0
+        
         try:
             # Optional LLM trace setup
             debug_cfg = self.context_manager.config_data.get('debug', {}) or {}
@@ -466,69 +471,80 @@ class MemberInsightsProcessor:
                         continue
 
                     # Token-loss guard: compare output vs existing summary tokens
-                    existing_summary_tokens = token_stats.get('existing_summary_tokens', 0)
-                    output_token_estimate = estimate_tokens(insights)
-                    logger.info(
-                        (
-                            f"[LLM] {contact_id} {eni_source_type}/{eni_source_subtype} "
-                            f"output_token_estimate={output_token_estimate} vs existing_summary_tokens={existing_summary_tokens}"
-                        )
-                    )
+                    # NOTE: Token-loss retry logic is disabled for versioned insights since we can audit previous versions
+                    # Keeping this code commented for potential future reuse
+                    # existing_summary_tokens = token_stats.get('existing_summary_tokens', 0)
+                    # output_token_estimate = estimate_tokens(insights)
+                    # logger.info(
+                    #     (
+                    #         f"[LLM] {contact_id} {eni_source_type}/{eni_source_subtype} "
+                    #         f"output_token_estimate={output_token_estimate} vs existing_summary_tokens={existing_summary_tokens}"
+                    #     )
+                    # )
 
-                    if existing_summary_tokens and output_token_estimate < existing_summary_tokens:
-                        # Count token-loss event
-                        result['token_loss_events'] += 1
-                        logger.error(
-                            (
-                                f"[TOKEN-LOSS] Output tokens ({output_token_estimate}) < existing summary tokens ({existing_summary_tokens}). "
-                                f"Retrying once for {contact_id} {eni_source_type}/{eni_source_subtype}"
-                            )
-                        )
-                        # Retry once
-                        start_time_retry = time.time()
-                        insights_retry = self.ai_processor.generate_from_full_prompt(full_rendered_prompt)
-                        ai_retry_duration = time.time() - start_time_retry
-                        if self.enhanced_logger:
-                            self.enhanced_logger.log_ai_call_end(
-                                self.ai_processor.model_name if hasattr(self.ai_processor, 'model_name') else 'AI',
-                                "structured_insight (retry)",
-                                f"{eni_source_type}/{eni_source_subtype}",
-                                bool(insights_retry),
-                                ai_retry_duration,
-                                len(insights_retry) if insights_retry else 0
-                            )
+                    # accepted_duration = ai_duration
+                    # accepted_output_tokens = output_token_estimate
+                    
+                    # if existing_summary_tokens and output_token_estimate < existing_summary_tokens:
+                    #     # Count token-loss event
+                    #     result['token_loss_events'] += 1
+                    #     logger.error(
+                    #         (
+                    #             f"[TOKEN-LOSS] Output tokens ({output_token_estimate}) < existing summary tokens ({existing_summary_tokens}). "
+                    #             f"Retrying once for {contact_id} {eni_source_type}/{eni_source_subtype}"
+                    #         )
+                    #     )
+                    #     # Retry once
+                    #     start_time_retry = time.time()
+                    #     insights_retry = self.ai_processor.generate_from_full_prompt(full_rendered_prompt)
+                    #     ai_retry_duration = time.time() - start_time_retry
+                    #     if self.enhanced_logger:
+                    #         self.enhanced_logger.log_ai_call_end(
+                    #             self.ai_processor.model_name if hasattr(self.ai_processor, 'model_name') else 'AI',
+                    #             "structured_insight (retry)",
+                    #             f"{eni_source_type}/{eni_source_subtype}",
+                    #             bool(insights_retry),
+                    #             ai_retry_duration,
+                    #             len(insights_retry) if insights_retry else 0
+                    #         )
 
-                        if not insights_retry:
-                            result['errors'].append(
-                                f"Retry also failed for {contact_id} {eni_source_type}/{eni_source_subtype}; skipping upsert and processed-marking"
-                            )
-                            # Count skipped group and records
-                            group_eni_ids = eni_data['eni_id'].tolist()
-                            result['token_loss_groups_skipped'] += 1
-                            result['token_loss_records_skipped'] += len(group_eni_ids)
-                            continue
+                    #     if not insights_retry:
+                    #         result['errors'].append(
+                    #             f"Retry also failed for {contact_id} {eni_source_type}/{eni_source_subtype}; skipping upsert and processed-marking"
+                    #         )
+                    #         # Count skipped group and records
+                    #         group_eni_ids = eni_data['eni_id'].tolist()
+                    #         result['token_loss_groups_skipped'] += 1
+                    #         result['token_loss_records_skipped'] += len(group_eni_ids)
+                    #         continue
 
-                        output_retry_tokens = estimate_tokens(insights_retry)
-                        logger.info(
-                            (
-                                f"[LLM-RETRY] {contact_id} {eni_source_type}/{eni_source_subtype} output_token_estimate={output_retry_tokens} "
-                                f"vs existing_summary_tokens={existing_summary_tokens}"
-                            )
-                        )
-                        if output_retry_tokens < existing_summary_tokens:
-                            logger.error(
-                                (
-                                    f"[TOKEN-LOSS] Retry output still smaller ({output_retry_tokens} < {existing_summary_tokens}). "
-                                    f"Skipping this group without upsert or processed-marking"
-                                )
-                            )
-                            # Count skipped group and records
-                            group_eni_ids = eni_data['eni_id'].tolist()
-                            result['token_loss_groups_skipped'] += 1
-                            result['token_loss_records_skipped'] += len(group_eni_ids)
-                            continue
+                    #     output_retry_tokens = estimate_tokens(insights_retry)
+                    #     logger.info(
+                    #         (
+                    #             f"[LLM-RETRY] {contact_id} {eni_source_type}/{eni_source_subtype} output_token_estimate={output_retry_tokens} "
+                    #             f"vs existing_summary_tokens={existing_summary_tokens}"
+                    #         )
+                    #     )
+                    #     if output_retry_tokens < existing_summary_tokens:
+                    #         logger.error(
+                    #             (
+                    #                 f"[TOKEN-LOSS] Retry output still smaller ({output_retry_tokens} < {existing_summary_tokens}). "
+                    #                 f"Skipping this group without upsert or processed-marking"
+                    #             )
+                    #         )
+                    #         # Count skipped group and records
+                    #         group_eni_ids = eni_data['eni_id'].tolist()
+                    #         result['token_loss_groups_skipped'] += 1
+                    #         result['token_loss_records_skipped'] += len(group_eni_ids)
+                    #         continue
 
-                        insights = insights_retry
+                    #     insights = insights_retry
+                    #     accepted_duration = ai_retry_duration
+                    #     accepted_output_tokens = output_retry_tokens
+                    
+                    # With versioned insights, we accept all LLM outputs without retry
+                    accepted_duration = ai_duration
+                    accepted_output_tokens = estimate_tokens(insights)
 
                     # Append trace for response
                     if llm_trace_enabled and trace_writer and trace_file_path:
@@ -567,26 +583,94 @@ class MemberInsightsProcessor:
                                 from data_processing.schema import StructuredInsightContent
 
                                 structured_content = None
+                                def _all_fields_empty(si: StructuredInsightContent) -> bool:
+                                    return not any([
+                                        (si.personal or '').strip(),
+                                        (si.business or '').strip(),
+                                        (si.investing or '').strip(),
+                                        (getattr(si, 'three_i', '') or '').strip(),
+                                        (si.deals or '').strip(),
+                                        (si.introductions or '').strip(),
+                                    ])
+
+                                def _parse_markdown_sections(md_text: str) -> StructuredInsightContent:
+                                    if not md_text:
+                                        return StructuredInsightContent(
+                                            personal="", business="", investing="", three_i="", deals="", introductions=""
+                                        )
+                                    def _extract(section: str) -> str:
+                                        pattern = rf"^## {section}\n([\s\S]*?)(?=\n## |\Z)"
+                                        m = _re.search(pattern, md_text, _re.MULTILINE)
+                                        return (m.group(1).strip() if m else "")
+                                    return StructuredInsightContent(
+                                        personal=_extract("Personal"),
+                                        business=_extract("Business"),
+                                        investing=_extract("Investing"),
+                                        three_i=_extract("3i"),
+                                        deals=_extract("Deals"),
+                                        introductions=_extract("Introductions"),
+                                    )
                                 if insights:
                                     json_match = _re.search(r'```json\s*(.*?)\s*```', insights, _re.DOTALL)
                                     if json_match:
                                         try:
                                             parsed_json = _json.loads(json_match.group(1))
-                                            structured_content = StructuredInsightContent(**parsed_json)
+                                            if isinstance(parsed_json, dict) and 'existing_member_summary' in parsed_json:
+                                                structured_content = _parse_markdown_sections(parsed_json.get('existing_member_summary') or "")
+                                            else:
+                                                structured_content = StructuredInsightContent(**parsed_json)
                                         except (_json.JSONDecodeError, Exception):
-                                            structured_content = StructuredInsightContent(
-                                                personal="", business="", investing="", three_i="", deals="", introductions=""
-                                            )
+                                            structured_content = None
                                     else:
                                         try:
                                             parsed_json = _json.loads(insights)
-                                            structured_content = StructuredInsightContent(**parsed_json)
+                                            if isinstance(parsed_json, dict) and 'existing_member_summary' in parsed_json:
+                                                structured_content = _parse_markdown_sections(parsed_json.get('existing_member_summary') or "")
+                                            else:
+                                                structured_content = StructuredInsightContent(**parsed_json)
                                         except (_json.JSONDecodeError, Exception):
-                                            structured_content = StructuredInsightContent(
-                                                personal="", business="", investing="", three_i="", deals="", introductions=""
-                                            )
+                                            # Try generic fenced block without language
+                                            generic_match = _re.search(r'```\s*(.*?)\s*```', insights, _re.DOTALL)
+                                            if generic_match:
+                                                try:
+                                                    parsed_json = _json.loads(generic_match.group(1))
+                                                    if isinstance(parsed_json, dict) and 'existing_member_summary' in parsed_json:
+                                                        structured_content = _parse_markdown_sections(parsed_json.get('existing_member_summary') or "")
+                                                    else:
+                                                        structured_content = StructuredInsightContent(**parsed_json)
+                                                except (_json.JSONDecodeError, Exception):
+                                                    structured_content = None
+                                            if not structured_content:
+                                                # Final fallback: parse markdown sections from free text
+                                                structured_content = _parse_markdown_sections(insights)
 
                                 if structured_content:
+                                    # If JSON parsed but all fields empty, attempt markdown fallback once
+                                    if _all_fields_empty(structured_content) and insights:
+                                        md_fallback = _parse_markdown_sections(insights)
+                                        if not _all_fields_empty(md_fallback):
+                                            structured_content = md_fallback
+                                    # Compute token metrics for this accepted iteration
+                                    rendered_full_tokens = 0
+                                    try:
+                                        rendered_full_tokens = int(token_stats.get('rendered_full_tokens') or 0)
+                                    except Exception:
+                                        rendered_full_tokens = 0
+                                    if rendered_full_tokens <= 0:
+                                        rendered_full_tokens = estimate_tokens(full_rendered_prompt)
+                                    est_input_tokens_delta = rendered_full_tokens or 0
+                                    est_insights_tokens_current = accepted_output_tokens or estimate_tokens(insights)
+                                    generation_time_seconds_delta = float(accepted_duration or 0.0)
+
+                                    logger.info(
+                                        f"[TOKENS] input+={est_input_tokens_delta} current_output={est_insights_tokens_current} gen_time+={generation_time_seconds_delta:.2f}"
+                                    )
+
+                                    # Accumulate per-contact summary
+                                    contact_est_input_tokens += est_input_tokens_delta
+                                    contact_est_insights_tokens_latest = est_insights_tokens_current
+                                    contact_generation_time_seconds += generation_time_seconds_delta
+
                                     supabase_result, was_created = self.supabase_processor.process_insight(
                                         contact_id=contact_id,
                                         # Use consolidated ENI id so all groups merge into a single record per contact
@@ -600,7 +684,10 @@ class MemberInsightsProcessor:
                                             'context_files': f'{eni_source_type}/{eni_source_subtype}',
                                             'record_count': len(eni_data),
                                             'total_eni_ids': len(group_eni_ids)
-                                        }
+                                        },
+                                        est_input_tokens_delta=est_input_tokens_delta,
+                                        est_insights_tokens_current=est_insights_tokens_current,
+                                        generation_time_seconds_delta=generation_time_seconds_delta,
                                     )
                                     if supabase_result:
                                         action = "created" if was_created else "updated"
@@ -652,6 +739,12 @@ class MemberInsightsProcessor:
                         f"records_skipped={result['token_loss_records_skipped']}"
                     )
                 )
+            
+            # Token metrics summary for this contact
+            logger.info(
+                f"[TOKENS] Summary for {contact_id}: est_input_tokens={contact_est_input_tokens} "
+                f"est_insights_tokens={contact_est_insights_tokens_latest} generation_time_seconds={contact_generation_time_seconds:.2f}"
+            )
 
             # Perform single Supabase-driven Airtable sync per contact (post-processing)
             if not dry_run and self.supabase_airtable_sync and self.structured_airtable_writer:
@@ -673,6 +766,11 @@ class MemberInsightsProcessor:
                     logger.error(err)
 
             result['success'] = len(result['errors']) == 0
+            
+            # Return per-contact token metrics for optional CLI printing
+            result['est_input_tokens'] = contact_est_input_tokens
+            result['est_insights_tokens'] = contact_est_insights_tokens_latest
+            result['generation_time_seconds'] = contact_generation_time_seconds
             
             return result
             
@@ -716,7 +814,7 @@ class MemberInsightsProcessor:
             existing_insight = None
             if self.supabase_client:
                 try:
-                    existing_insight = self.supabase_client.get_insight_by_contact_id(contact_id)
+                    existing_insight = self.supabase_client.get_latest_insight_by_contact_id(contact_id, generator='structured_insight')
                     if existing_insight:
                         logger.info(f"Found existing structured insight for contact {contact_id}")
                     else:
@@ -726,15 +824,27 @@ class MemberInsightsProcessor:
             
             # Initialize member summary structure (use existing or create new)
             if existing_insight and hasattr(existing_insight, 'insights'):
-                # Start with existing insights content
-                member_summary = {
-                    "personal": existing_insight.personal or "",
-                    "business": existing_insight.business or "",
-                    "investing": existing_insight.investing or "",
-                    "3i": existing_insight.three_i or "",
-                    "deals": existing_insight.deals or "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
-                    "introductions": existing_insight.introductions or "**Looking to meet:**\n\n**Avoid introductions to:**\n"
-                }
+                # Start with existing insights content - access from JSON structure
+                insights_content = existing_insight.insights
+                if isinstance(insights_content, dict):
+                    member_summary = {
+                        "personal": insights_content.get('personal', ''),
+                        "business": insights_content.get('business', ''),
+                        "investing": insights_content.get('investing', ''),
+                        "3i": insights_content.get('3i') or insights_content.get('three_i', ''),
+                        "deals": insights_content.get('deals', "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n"),
+                        "introductions": insights_content.get('introductions', "**Looking to meet:**\n\n**Avoid introductions to:**\n")
+                    }
+                else:
+                    # If insights is a StructuredInsightContent object
+                    member_summary = {
+                        "personal": getattr(insights_content, 'personal', '') or '',
+                        "business": getattr(insights_content, 'business', '') or '',
+                        "investing": getattr(insights_content, 'investing', '') or '',
+                        "3i": getattr(insights_content, 'three_i', '') or '',
+                        "deals": getattr(insights_content, 'deals', '') or "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
+                        "introductions": getattr(insights_content, 'introductions', '') or "**Looking to meet:**\n\n**Avoid introductions to:**\n"
+                    }
                 logger.info(f"Loaded existing insights as baseline for {contact_id}")
             else:
                 # Initialize empty member summary structure
@@ -1329,6 +1439,12 @@ def main():
                     f"groups_skipped={result.get('token_loss_groups_skipped', 0)} | "
                     f"records_skipped={result.get('token_loss_records_skipped', 0)}"
                 )
+            # Token metrics summary for single-contact run
+            print(
+                f"[TOKENS] Summary for {args.contact_id}: est_input_tokens={result.get('est_input_tokens', 0)} "
+                f"est_insights_tokens={result.get('est_insights_tokens', 0)} "
+                f"generation_time_seconds={result.get('generation_time_seconds', 0.0):.2f}"
+            )
         else:
             # Process multiple contacts
             # Ensure BigQuery connection first

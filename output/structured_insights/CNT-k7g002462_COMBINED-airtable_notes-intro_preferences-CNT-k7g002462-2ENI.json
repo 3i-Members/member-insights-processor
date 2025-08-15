@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "contact_id": "CNT-k7g002462",
+    "eni_id": "COMBINED-airtable_notes-intro_preferences-CNT-k7g002462-2ENI",
+    "member_name": null,
+    "eni_source_type": "airtable_notes",
+    "eni_source_subtype": "intro_preferences",
+    "generated_at": "2025-08-15T13:38:14.623821",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "airtable_notes/intro_preferences",
+    "record_count": 2,
+    "total_eni_ids": 2
+  },
+  "insights": {
+    "existing_member_summary": "## Personal\n\n\n## Business\n\n\n## Investing\n\n\n## 3i\n\n\n## Deals\n\n\n## Introductions\n\n**Looking to meet:**\n- Looking to meet a potential member who's successfully built out a Hedge Fund or Family Office\n  - [2024-12-18,ENI-07577056252820914794,airtable_notes]\n- Looking to meet other exited founders building cool products\n  - [2024-12-18,ENI-07577056252820914794,airtable_notes]\n- fellow founders, young jewish people in new york, people in fintech, public equity people, hedgefund space, financial product experts, ties to israel\n  - [2023-07-25,ENI-08180156978831874692,airtable_notes]\n\n**Avoid introductions to:**\n- "
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "contact_id": "CNT-gb7002478",
+    "eni_id": "COMBINED-recurroo-asset_class-CNT-gb7002478-1ENI",
+    "member_name": null,
+    "eni_source_type": "recurroo",
+    "eni_source_subtype": "asset_class",
+    "generated_at": "2025-08-15T13:19:45.738206",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "recurroo/asset_class",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "member_summary": "## Personal\n\n\n## Business\n\n\n## Investing\n\n* Interested in exploring these asset classes: Private Equity, Venture Capital\n  - [2025-08-09,ENI-4114875201425339171,recurroo]\n\n\n## 3i\n\n\n## Deals\n\n\n## Introductions\n\n"
+  }
+}

@@ -71,25 +71,39 @@ def test_airtable_sync_from_supabase(contact_id: str):
         
         # First, verify the structured insight exists in Supabase
         print(f"\n🔍 Checking Supabase for contact {contact_id}...")
-        insight = supabase_client.get_insight_by_contact_id(contact_id)
+        insight = supabase_client.get_latest_insight_by_contact_id(contact_id, generator='structured_insight')
         
         if not insight:
-            print(f"❌ No structured insight found in Supabase for {contact_id}")
+            print(f"❌ No latest structured insight found in Supabase for {contact_id}")
             print("You need to process this contact first with the main pipeline.")
             return False
         
-        print(f"✅ Found insight in Supabase:")
+        print(f"✅ Found latest insight in Supabase:")
         print(f"   Database ID: {insight.id}")
         print(f"   ENI ID: {insight.metadata.eni_id}")
         print(f"   Generated At: {insight.metadata.generated_at}")
         print(f"   ENI Source Types: {insight.metadata.eni_source_types}")
+        print(f"   Version: {insight.metadata.version}")
+        print(f"   Is Latest: {insight.is_latest}")
         
-        if insight.personal:
-            print(f"   Personal section: {len(insight.personal)} characters")
-        if insight.business:
-            print(f"   Business section: {len(insight.business)} characters")
-        if insight.investing:
-            print(f"   Investing section: {len(insight.investing)} characters")
+        # Access insights from the JSON structure instead of individual fields
+        insights_content = insight.insights
+        if isinstance(insights_content, dict):
+            personal = insights_content.get('personal', '')
+            business = insights_content.get('business', '')
+            investing = insights_content.get('investing', '')
+        else:
+            # If insights is a StructuredInsightContent object
+            personal = getattr(insights_content, 'personal', '') or ''
+            business = getattr(insights_content, 'business', '') or ''
+            investing = getattr(insights_content, 'investing', '') or ''
+        
+        if personal:
+            print(f"   Personal section: {len(personal)} characters")
+        if business:
+            print(f"   Business section: {len(business)} characters")
+        if investing:
+            print(f"   Investing section: {len(investing)} characters")
         
         # Now test the sync to Airtable
         print(f"\n📤 Syncing to Airtable...")

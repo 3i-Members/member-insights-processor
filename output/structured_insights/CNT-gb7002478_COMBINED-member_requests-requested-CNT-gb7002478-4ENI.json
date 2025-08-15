@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "contact_id": "CNT-gb7002478",
+    "eni_id": "COMBINED-member_requests-requested-CNT-gb7002478-4ENI",
+    "member_name": null,
+    "eni_source_type": "member_requests",
+    "eni_source_subtype": "requested",
+    "generated_at": "2025-08-15T13:21:33.657432",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "member_requests/requested",
+    "record_count": 4,
+    "total_eni_ids": 4
+  },
+  "insights": {
+    "updated_member_summary": "## Personal\n\n\n## Business\n\n\n## Investing\n\n\n## 3i\n\n* Uses WhatsApp 3i channels to crowdsource product, talent, and local-service referrals (examples include questions about HRV products, posting a venture-studio job, seeking Netflix connections for a son, and asking for concierge doctor recommendations).\n  - [2025-06-17,ENI-01424485587539903943,member_requests]\n  - [2025-05-13,ENI-08497736902163672271,member_requests]\n  - [2025-01-23,ENI-6218947883626193234,member_requests]\n  - [2024-12-02,ENI-546598173064965112,member_requests]\n\n\n## Deals\n\n\n## Introductions\n\n**Looking to meet:**\n- Connections at Optimal HRV (founders, product/engineering leads, or clinical/HRV analytics experts) who can explain how Optimal HRV differs from and/or complements Apple Watch and Oura ring data and insights.\n  - [2025-06-17,ENI-01424485587539903943,member_requests]\n- Recruiters, hiring managers, or employee contacts at Netflix (NFLX) who can clarify compensation ranges or provide referrals for a candidate the member's son is considering applying for.\n  - [2025-01-23,ENI-6218947883626193234,member_requests]\n- Talent scouts, recruiters, or operator referrals for a \"venture studio associate\" role (LinkedIn job posting: https://www.linkedin.com/jobs/view/4214846974) — specifically people who can recommend or introduce junior operators with product/venture experience suitable for a venture studio.\n  - [2025-05-13,ENI-08497736902163672271,member_requests]\n- Concierge primary care physicians or South Florida-based concierge medical practices accepting new patients near Pembroke Pines, FL (for a 32-year-old female acquaintance).\n  - [2024-12-02,ENI-546598173064965112,member_requests]\n\n**Avoid introductions to:**\n\n"
+  }
+}

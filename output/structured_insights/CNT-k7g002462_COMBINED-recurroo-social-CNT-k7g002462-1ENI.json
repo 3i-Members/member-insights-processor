@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "contact_id": "CNT-k7g002462",
+    "eni_id": "COMBINED-recurroo-social-CNT-k7g002462-1ENI",
+    "member_name": null,
+    "eni_source_type": "recurroo",
+    "eni_source_subtype": "social",
+    "generated_at": "2025-08-13T11:44:56.955602",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "recurroo/social",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "personal": "* Philanthropy\n  * [2025-07-26,ENI-3566856843262732771,recurroo]\n* Poker\n  * [2025-07-26,ENI-3566856843262732771,recurroo]\n* Reading\n  * [2025-07-26,ENI-3566856843262732771,recurroo]\n* Travel\n  * [2025-07-26,ENI-3566856843262732771,recurroo]\n",
+    "business": "",
+    "investing": "* Energy\n  * [2025-07-26,ENI-04453743255374400162,recurroo]\n* FinTech\n  * [2025-07-26,ENI-04453743255374400162,recurroo]\n* Finance\n  * [2025-07-26,ENI-04453743255374400162,recurroo]\n* Internet\n  * [2025-07-26,ENI-04453743255374400162,recurroo]\n* Software/SaaS\n  * [2025-07-26,ENI-04453743255374400162,recurroo]\n* Technology\n  * [2025-07-26,ENI-04453743255374400162,recurroo]\n",
+    "3i": "",
+    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Energy\n  - [2025-07-26,ENI-04453743255374400162,recurroo]\n- FinTech\n  - [2025-07-26,ENI-04453743255374400162,recurroo]\n- Finance\n  - [2025-07-26,ENI-04453743255374400162,recurroo]\n- Internet\n  - [2025-07-26,ENI-04453743255374400162,recurroo]\n- Software/SaaS\n  - [2025-07-26,ENI-04453743255374400162,recurroo]\n- Technology\n  - [2025-07-26,ENI-04453743255374400162,recurroo]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
+    "introductions": ""
+  }
+}

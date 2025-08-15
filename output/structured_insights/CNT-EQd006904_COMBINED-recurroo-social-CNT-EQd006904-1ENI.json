@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "contact_id": "CNT-EQd006904",
+    "eni_id": "COMBINED-recurroo-social-CNT-EQd006904-1ENI",
+    "member_name": null,
+    "eni_source_type": "recurroo",
+    "eni_source_subtype": "social",
+    "generated_at": "2025-08-13T11:01:19.018955",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "recurroo/social",
+    "record_count": 1,
+    "total_eni_ids": 1
+  },
+  "insights": {
+    "personal": "* Interested in the following social activities: Art; Golf; Music; Poker; Skiing/Snowboarding; Tennis; Travel; Wine\n  * [2025-08-08,ENI-05135263575397974794,recurroo]",
+    "business": "",
+    "investing": "",
+    "3i": "",
+    "deals": "",
+    "introductions": ""
+  }
+}

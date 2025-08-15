@@ -24,15 +24,17 @@ class StubSupabaseClient:
         self.default_structured_insight = default_structured_insight
 
     def get_insight_by_contact_id(self, contact_id: str):
-        # Always return a simple object with default fields for the test
+        # Return a simple object with insights as JSON structure (not individual fields)
         d = self.default_structured_insight
         return SimpleNamespace(
-            personal=d.get("personal", ""),
-            business=d.get("business", ""),
-            investing=d.get("investing", ""),
-            three_i=d.get("3i", ""),
-            deals=d.get("deals", ""),
-            introductions=d.get("introductions", ""),
+            insights={
+                "personal": d.get("personal", ""),
+                "business": d.get("business", ""),
+                "investing": d.get("investing", ""),
+                "3i": d.get("3i", ""),
+                "deals": d.get("deals", ""),
+                "introductions": d.get("introductions", ""),
+            }
         )
 
 

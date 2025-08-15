@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "contact_id": "CNT-FMj006943",
+    "eni_id": "COMBINED-airtable_affiliations-null-CNT-FMj006943-7ENI",
+    "member_name": null,
+    "eni_source_type": "airtable_affiliations",
+    "eni_source_subtype": "null",
+    "generated_at": "2025-08-15T14:01:04.990049",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "airtable_affiliations/null",
+    "record_count": 7,
+    "total_eni_ids": 7
+  },
+  "insights": {
+    "personal": "* Graduated from The Wharton School (BS)\n  - [2024-07-10,ENI-05587687995277087368,airtable_affiliations]\n* J.D., NYU School of Law\n  - [2024-07-10,ENI-4372285798231339813,airtable_affiliations]",
+    "business": "* Affiliated with Kramer Levin Naftalis & Frankel LLP as an Attorney (Employee; law practice)\n  - [2024-07-10,ENI-08067364232117990096,airtable_affiliations]\n* Affiliated with Cahill Gordon & Reindel as an Attorney (Employee; law practice)\n  - [2024-07-10,ENI-5392545931755122635,airtable_affiliations]\n* Chairman of the Board, Bally Technologies, Inc. (Entertainment / Gaming)\n  - [2024-07-10,ENI-5157678893124385218,airtable_affiliations]",
+    "investing": "* Founder / Managing Director at Trevi Health Ventures — healthcare-focused growth equity and private equity investing; emphasis on medical devices, biopharmaceuticals, and healthcare services; invests in growth equity, special situations, traditional buy-outs, and structured finance transactions\n  - [2024-07-10,ENI-04014593145918929557,airtable_affiliations]\n* Managing Member, UltraV Holdings (investment partnerships) — joint-venture fund exposure; active in private credit and commercial real estate asset management\n  - [2024-07-10,ENI-05858127913112638041,airtable_affiliations]",
+    "3i": "",
+    "deals": "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- Growth equity and private equity investments in healthcare (medical devices, biopharma, healthcare services)\n  - [2024-07-10,ENI-04014593145918929557,airtable_affiliations]\n- Special situations, traditional buy-outs, and structured finance transactions\n  - [2024-07-10,ENI-04014593145918929557,airtable_affiliations]\n- Private credit and commercial real estate asset management\n  - [2024-07-10,ENI-05858127913112638041,airtable_affiliations]\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies",
+    "introductions": ""
+  }
+}

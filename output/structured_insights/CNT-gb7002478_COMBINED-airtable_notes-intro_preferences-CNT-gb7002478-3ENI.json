@@ -1,0 +1,18 @@
+{
+  "metadata": {
+    "contact_id": "CNT-gb7002478",
+    "eni_id": "COMBINED-airtable_notes-intro_preferences-CNT-gb7002478-3ENI",
+    "member_name": null,
+    "eni_source_type": "airtable_notes",
+    "eni_source_subtype": "intro_preferences",
+    "generated_at": "2025-08-15T13:18:55.552371",
+    "generator": "structured_insight",
+    "system_prompt_key": "structured_insight",
+    "context_files": "airtable_notes/intro_preferences",
+    "record_count": 3,
+    "total_eni_ids": 3
+  },
+  "insights": {
+    "updated_member_summary": "## Personal\n\n\n## Business\n\n\n## Investing\n\n\n## 3i\n\n* Member has very limited availability; \"No time to discuss\"\n  - [2025-06-25,ENI-7434207688387098433,airtable_notes]\n\n\n## Deals\n\nThis Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n- \n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n- Venture-stage healthcare (venture/healthcare), specifically startups focused on improving healthcare decision-making and patient/clinician decision support; prefers companies and founders who think in complex systems rather than purely results-driven approaches\n  - [2023-07-25,ENI-4075821624582810162,airtable_notes]\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n- Deals sourced from or primarily involving professionals in financial services (member already has extensive financial services network)\n  - [2023-07-25,ENI-4075821624582810162,airtable_notes]\n\n\n## Introductions\n\n**Looking to meet:**\n- Individuals with physics or quantitative backgrounds; avid readers; peers in similar life/career/family stages\n  - [2025-02-18,ENI-05132690158570767047,airtable_notes]\n- Founders, operators, researchers, or investors in venture healthcare working on systems-thinking approaches to improve healthcare decision-making; people outside of financial services\n  - [2023-07-25,ENI-4075821624582810162,airtable_notes]\n\n**Avoid introductions to:**\n- Professionals in financial services (member does not need more contacts in this space)\n  - [2023-07-25,ENI-4075821624582810162,airtable_notes]\n"
+  }
+}
