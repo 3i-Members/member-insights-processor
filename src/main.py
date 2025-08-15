@@ -34,6 +34,7 @@ from data_processing.supabase_insights_processor import SupabaseInsightsProcesso
 from context_management.config_loader import create_config_loader
 from context_management.markdown_reader import create_markdown_reader
 from context_management.processing_filter import create_processing_filter
+from context_management.context_manager import ContextManager
 from ai_processing.gemini_processor import create_gemini_processor
 from ai_processing.openai_processor import create_openai_processor
 from ai_processing.anthropic_processor import AnthropicProcessor
@@ -43,6 +44,9 @@ from output_management.enhanced_airtable_writer import create_enhanced_airtable_
 from output_management.json_writer import create_json_writer
 from output_management.structured_airtable_writer import create_structured_airtable_writer
 from utils.enhanced_logger import create_enhanced_logger
+from utils.token_utils import estimate_tokens
+from output_management.markdown_writer import LLMTraceWriter
+from output_management.supabase_airtable_writer import SupabaseAirtableSync
 
 # Configure logging
 logging.basicConfig(
@@ -81,22 +85,31 @@ class MemberInsightsProcessor:
         self.json_writer = None
         self.structured_airtable_writer = None
         self.enhanced_logger = None
+        self.context_manager = None
         
         # Supabase components
         self.supabase_client = None
         self.supabase_processor = None
+        self.supabase_airtable_sync = None
         
         self._initialize_components()
     
     def _initialize_components(self) -> None:
         """Initialize all processing components."""
         try:
-            # Load configuration
+            # Load configuration (legacy loader retained but primary access will be via ContextManager)
             self.config_loader = create_config_loader(self.config_file_path)
             logger.info("Configuration loaded successfully")
+
+            # Initialize Context Manager with config
+            self.context_manager = ContextManager(
+                config_file_path=self.config_file_path,
+                supabase_client=None,
+            )
+            logger.info("Context manager initialized")
             
             # Initialize enhanced logging system
-            logging_config = self.config_loader.config_data.get('logging', {})
+            logging_config = self.context_manager.config_data.get('logging', {})
             self.enhanced_logger = create_enhanced_logger(logging_config)
             self.enhanced_logger.logger.info("Enhanced logging system initialized")
             
@@ -110,7 +123,7 @@ class MemberInsightsProcessor:
             self.markdown_reader = create_markdown_reader()
             
             # Initialize processing filter
-            filter_file = self.filter_file_path or self.config_loader.get_default_filter_file()
+            filter_file = self.filter_file_path or self.context_manager.get_default_filter_file()
             if filter_file:
                 self.processing_filter = create_processing_filter(filter_file)
                 logger.info(f"Processing filter loaded from: {filter_file}")
@@ -118,21 +131,21 @@ class MemberInsightsProcessor:
                 logger.warning("No processing filter configured - all records will be processed")
             
             # Initialize AI processor (OpenAI, Gemini, or Anthropic based on configuration)
-            ai_provider = self.config_loader.get_ai_provider()
+            ai_provider = self.context_manager.get_ai_provider()
             
             if ai_provider.lower() == 'openai':
-                openai_config = self.config_loader.get_openai_config()
+                openai_config = self.context_manager.get_openai_config()
                 self.ai_processor = create_openai_processor(config=openai_config)
                 logger.info("Initialized OpenAI processor")
             elif ai_provider.lower() == 'anthropic':
-                anthropic_config = self.config_loader.get_anthropic_config()
+                anthropic_config = self.context_manager.get_anthropic_config()
                 self.ai_processor = AnthropicProcessor(
                     model_name=anthropic_config.get('model_name', 'claude-3-5-sonnet-20241022'),
                     generation_config=anthropic_config.get('generation_config', {})
                 )
                 logger.info("Initialized Anthropic processor")
             else:
-                gemini_config = self.config_loader.get_gemini_config()
+                gemini_config = self.context_manager.get_gemini_config()
                 self.ai_processor = create_gemini_processor(config=gemini_config)
                 logger.info("Initialized Gemini processor")
             
@@ -140,7 +153,7 @@ class MemberInsightsProcessor:
             self.markdown_writer = create_markdown_writer()
             
             # Initialize enhanced Airtable writer (optional)
-            airtable_config = self.config_loader.get_airtable_config()
+            airtable_config = self.context_manager.get_airtable_config()
             if airtable_config:
                 self.airtable_writer = create_enhanced_airtable_writer()
             else:
@@ -157,7 +170,7 @@ class MemberInsightsProcessor:
                 )
             
             # Initialize Supabase components
-            supabase_config = self.config_loader.config_data.get('supabase', {})
+            supabase_config = self.context_manager.get_supabase_config()
             if supabase_config and supabase_config.get('enable_supabase_storage', True):
                 try:
                     self.supabase_client = SupabaseInsightsClient()
@@ -171,6 +184,24 @@ class MemberInsightsProcessor:
                     logger.info("Continuing without Supabase integration")
             else:
                 logger.info("Supabase integration disabled in configuration")
+ 
+            # Attach Supabase client to context manager if available
+            try:
+                if self.context_manager:
+                    self.context_manager.supabase_client = self.supabase_client
+            except Exception:
+                pass
+            
+            # Initialize Supabase→Airtable sync helper if both sides are available
+            try:
+                if self.supabase_client and self.structured_airtable_writer:
+                    self.supabase_airtable_sync = SupabaseAirtableSync(
+                        supabase_client=self.supabase_client,
+                        airtable_writer=self.structured_airtable_writer
+                    )
+                    logger.info("Initialized Supabase→Airtable sync helper")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Supabase→Airtable sync helper: {e}")
             
             logger.info("All components initialized successfully")
             
@@ -193,8 +224,8 @@ class MemberInsightsProcessor:
         }
         
         try:
-            # Validate configuration
-            config_validation = self.config_loader.validate_configuration()
+            # Validate configuration (moved to ContextManager)
+            config_validation = self.context_manager.validate_configuration()
             report['component_status']['config'] = config_validation
             if not config_validation['valid']:
                 report['valid'] = False
@@ -230,12 +261,11 @@ class MemberInsightsProcessor:
                 report['component_status']['gemini'] = {'connection_test': False, 'api_configured': False}
                 report['warnings'].append("Gemini API key not configured")
             
-            # Validate context structure
-            if self.markdown_reader:
-                context_validation = self.markdown_reader.validate_context_structure()
-                report['component_status']['context'] = context_validation
-                if not context_validation['valid']:
-                    report['warnings'].extend(context_validation['issues'])
+            # Validate context structure (moved to ContextManager)
+            context_validation = self.context_manager.validate_context_structure()
+            report['component_status']['context'] = context_validation
+            if not context_validation['valid']:
+                report['warnings'].extend(context_validation['issues'])
             
             # Validate output directory
             if self.markdown_writer:
@@ -306,68 +336,441 @@ class MemberInsightsProcessor:
             'skipped_eni_ids': [],
             'errors': [],
             'files_created': [],
-            'airtable_records': []
+            'airtable_records': [],
+            'airtable_final_sync': None,
+            # Token-loss diagnostics
+            'token_loss_events': 0,
+            'token_loss_groups_skipped': 0,
+            'token_loss_records_skipped': 0
         }
         
+        # Per-contact token metrics summary (accumulate accepted iterations)
+        contact_est_input_tokens = 0
+        contact_est_insights_tokens_latest = 0
+        contact_generation_time_seconds = 0.0
+        
         try:
+            # Optional LLM trace setup
+            debug_cfg = self.context_manager.config_data.get('debug', {}) or {}
+            llm_trace_cfg = (debug_cfg.get('llm_trace') or {}) if debug_cfg else {}
+            llm_trace_enabled = bool(llm_trace_cfg.get('enabled'))
+            trace_file_path = None
+            trace_writer = None
+            if llm_trace_enabled:
+                trace_writer = LLMTraceWriter(llm_trace_cfg.get('output_dir', 'logs/llm_traces'))
+                trace_file_path = trace_writer.start_trace(
+                    contact_id,
+                    llm_trace_cfg.get('file_naming_pattern', 'llm_trace_{contact_id}_{timestamp}.md')
+                )
+            
             # Ensure BigQuery connection is established
             if not self.bigquery_connector.connect():
                 result['errors'].append("Failed to connect to BigQuery")
                 return result
             
-            # Get processed ENI IDs for this contact
-            processed_eni_ids = self.log_manager.get_processed_eni_ids(contact_id)
-            
-            # Load contact data from BigQuery
-            contact_data = self.bigquery_connector.load_contact_data(
-                contact_id=contact_id,
-                processed_eni_ids=processed_eni_ids
-            )
-            
-            if contact_data.empty:
-                logger.info(f"No unprocessed data found for contact {contact_id}")
+            # Get processing rules from filter configuration
+            processing_rules = None
+            if self.processing_filter:
+                processing_rules = self.processing_filter.processing_rules
+                logger.info(f"Using processing filter rules for contact {contact_id}")
+            else:
+                logger.info(f"No processing filter configured - skipping contact {contact_id}")
                 result['success'] = True
                 return result
             
-            # Verify required columns exist
-            if 'eni_source_type' not in contact_data.columns:
-                result['errors'].append("Required column 'eni_source_type' not found in data")
+            # Get ENI type/subtype combinations to process
+            # NOTE: This will ALWAYS include NULL subtypes first, then any explicitly defined subtypes
+            eni_combinations = self.bigquery_connector.get_eni_combinations_for_processing(processing_rules)
+            
+            if not eni_combinations:
+                logger.info(f"No ENI combinations to process for contact {contact_id}")
+                result['success'] = True
                 return result
             
-            # Handle cases where eni_source_subtype might be null, empty, or NaN
-            # Convert various null representations to 'null' string for consistent processing
-            contact_data['eni_source_subtype'] = contact_data['eni_source_subtype'].fillna('null')
+            # Use a consolidated ENI id so all groups merge into a single Supabase record per contact
+            consolidated_eni_id = f"COMBINED-{contact_id}-ALL"
             
-            # Also handle empty strings and other null-like values
-            mask = (contact_data['eni_source_subtype'].astype(str).str.strip() == '') | \
-                   (contact_data['eni_source_subtype'].astype(str).str.lower().isin(['none', 'nan', 'nat']))
-            contact_data.loc[mask, 'eni_source_subtype'] = 'null'
+            # Process per group: load, build context, call LLM, upsert, and mark processed per group
+            total_loaded = 0
+            for eni_source_type, eni_source_subtype in eni_combinations:
+                try:
+                    eni_data = self.bigquery_connector.load_contact_data_filtered(
+                        contact_id=contact_id,
+                        eni_source_type=eni_source_type,
+                        eni_source_subtype=eni_source_subtype
+                    )
+                    
+                    if eni_data.empty:
+                        continue
+                    total_loaded += len(eni_data)
+                    subtype_desc = f"/{eni_source_subtype}" if eni_source_subtype else ""
+                    logger.info(f"Loaded {len(eni_data)} records for {contact_id}, {eni_source_type}{subtype_desc}")
+
+                    # Normalize subtype for consistency
+                    eni_data['eni_source_subtype'] = eni_data['eni_source_subtype'].fillna('null')
+                    mask = (
+                        eni_data['eni_source_subtype'].astype(str).str.strip() == ''
+                    ) | eni_data['eni_source_subtype'].astype(str).str.lower().isin(['none', 'nan', 'nat'])
+                    eni_data.loc[mask, 'eni_source_subtype'] = 'null'
+
+                    # Build context variables for this group
+                    ctx_vars = self.context_manager.build_context_variables(
+                        contact_id=contact_id,
+                        eni_source_type=eni_source_type,
+                        eni_source_subtype=eni_source_subtype,
+                        eni_group_df=eni_data,
+                        system_prompt_key=system_prompt_key,
+                    )
+
+                    # Readable token diagnostics for this group
+                    token_stats = ctx_vars.get('token_stats', {})
+                    logger.info(
+                        (
+                            f"[CTX] {contact_id} {eni_source_type}/{eni_source_subtype} "
+                            f"rows_total={ctx_vars.get('rows_total', 0)} rows_used={ctx_vars.get('rows_used', 0)} | "
+                            f"existing_summary_tokens={token_stats.get('existing_summary_tokens', 0)} "
+                            f"base_tokens={token_stats.get('base_tokens', 0)} new_data_tokens_used={token_stats.get('new_data_tokens_used', 0)} "
+                            f"available_for_new_data={token_stats.get('available_for_new_data', 0)} rendered_full_tokens={token_stats.get('rendered_full_tokens', 0)}"
+                        )
+                    )
+
+                    # Use fully-rendered system prompt from ContextManager (matches preview logic)
+                    full_rendered_prompt = ctx_vars.get('rendered_system_prompt') or ""
+
+                    # LLM call for this group
+                    if self.enhanced_logger:
+                        self.enhanced_logger.log_ai_call_start(
+                            self.ai_processor.model_name if hasattr(self.ai_processor, 'model_name') else 'AI',
+                            "structured_insight",
+                            f"{eni_source_type}/{eni_source_subtype}",
+                            len(eni_data)
+                        )
+                    start_time = time.time()
+                    insights = self.ai_processor.generate_from_full_prompt(full_rendered_prompt)
+                    ai_duration = time.time() - start_time
+                    if self.enhanced_logger:
+                        self.enhanced_logger.log_ai_call_end(
+                            self.ai_processor.model_name if hasattr(self.ai_processor, 'model_name') else 'AI',
+                            "structured_insight",
+                            f"{eni_source_type}/{eni_source_subtype}",
+                            bool(insights),
+                            ai_duration,
+                            len(insights) if insights else 0
+                        )
+
+                    # Append trace for request
+                    if llm_trace_enabled and trace_writer and trace_file_path:
+                        if llm_trace_cfg.get('include_rendered_prompts', True):
+                            trace_writer.append_section(trace_file_path, f"Request: {eni_source_type}/{eni_source_subtype}", full_rendered_prompt)
+                        if llm_trace_cfg.get('include_token_stats', True):
+                            import json as _json
+                            trace_writer.append_section(trace_file_path, "Token Stats", _json.dumps(token_stats, indent=2))
+
+                    if not insights:
+                        result['errors'].append(f"Failed to generate insights for {contact_id} {eni_source_type}/{eni_source_subtype}")
+                        continue
+
+                    # Token-loss guard: compare output vs existing summary tokens
+                    # NOTE: Token-loss retry logic is disabled for versioned insights since we can audit previous versions
+                    # Keeping this code commented for potential future reuse
+                    # existing_summary_tokens = token_stats.get('existing_summary_tokens', 0)
+                    # output_token_estimate = estimate_tokens(insights)
+                    # logger.info(
+                    #     (
+                    #         f"[LLM] {contact_id} {eni_source_type}/{eni_source_subtype} "
+                    #         f"output_token_estimate={output_token_estimate} vs existing_summary_tokens={existing_summary_tokens}"
+                    #     )
+                    # )
+
+                    # accepted_duration = ai_duration
+                    # accepted_output_tokens = output_token_estimate
+                    
+                    # if existing_summary_tokens and output_token_estimate < existing_summary_tokens:
+                    #     # Count token-loss event
+                    #     result['token_loss_events'] += 1
+                    #     logger.error(
+                    #         (
+                    #             f"[TOKEN-LOSS] Output tokens ({output_token_estimate}) < existing summary tokens ({existing_summary_tokens}). "
+                    #             f"Retrying once for {contact_id} {eni_source_type}/{eni_source_subtype}"
+                    #         )
+                    #     )
+                    #     # Retry once
+                    #     start_time_retry = time.time()
+                    #     insights_retry = self.ai_processor.generate_from_full_prompt(full_rendered_prompt)
+                    #     ai_retry_duration = time.time() - start_time_retry
+                    #     if self.enhanced_logger:
+                    #         self.enhanced_logger.log_ai_call_end(
+                    #             self.ai_processor.model_name if hasattr(self.ai_processor, 'model_name') else 'AI',
+                    #             "structured_insight (retry)",
+                    #             f"{eni_source_type}/{eni_source_subtype}",
+                    #             bool(insights_retry),
+                    #             ai_retry_duration,
+                    #             len(insights_retry) if insights_retry else 0
+                    #         )
+
+                    #     if not insights_retry:
+                    #         result['errors'].append(
+                    #             f"Retry also failed for {contact_id} {eni_source_type}/{eni_source_subtype}; skipping upsert and processed-marking"
+                    #         )
+                    #         # Count skipped group and records
+                    #         group_eni_ids = eni_data['eni_id'].tolist()
+                    #         result['token_loss_groups_skipped'] += 1
+                    #         result['token_loss_records_skipped'] += len(group_eni_ids)
+                    #         continue
+
+                    #     output_retry_tokens = estimate_tokens(insights_retry)
+                    #     logger.info(
+                    #         (
+                    #             f"[LLM-RETRY] {contact_id} {eni_source_type}/{eni_source_subtype} output_token_estimate={output_retry_tokens} "
+                    #             f"vs existing_summary_tokens={existing_summary_tokens}"
+                    #         )
+                    #     )
+                    #     if output_retry_tokens < existing_summary_tokens:
+                    #         logger.error(
+                    #             (
+                    #                 f"[TOKEN-LOSS] Retry output still smaller ({output_retry_tokens} < {existing_summary_tokens}). "
+                    #                 f"Skipping this group without upsert or processed-marking"
+                    #             )
+                    #         )
+                    #         # Count skipped group and records
+                    #         group_eni_ids = eni_data['eni_id'].tolist()
+                    #         result['token_loss_groups_skipped'] += 1
+                    #         result['token_loss_records_skipped'] += len(group_eni_ids)
+                    #         continue
+
+                    #     insights = insights_retry
+                    #     accepted_duration = ai_retry_duration
+                    #     accepted_output_tokens = output_retry_tokens
+                    
+                    # With versioned insights, we accept all LLM outputs without retry
+                    accepted_duration = ai_duration
+                    accepted_output_tokens = estimate_tokens(insights)
+
+                    # Append trace for response
+                    if llm_trace_enabled and trace_writer and trace_file_path:
+                        if llm_trace_cfg.get('include_response', True):
+                            trace_writer.append_section(trace_file_path, f"Response: {eni_source_type}/{eni_source_subtype}", insights)
+
+                    # Use a per-group ENI composite id
+                    group_eni_ids = eni_data['eni_id'].tolist()
+                    group_eni_id = f"COMBINED-{eni_source_type}-{eni_source_subtype}-{contact_id}-{len(group_eni_ids)}ENI"
+
+                    if not dry_run:
+                        # Write JSON for this group
+                        json_file = self.json_writer.write_structured_insight(
+                            contact_id=contact_id,
+                            eni_id=group_eni_id,
+                            content=insights,
+                            additional_metadata={
+                                'eni_source_type': eni_source_type,
+                                'eni_source_subtype': eni_source_subtype,
+                                'system_prompt_key': system_prompt_key,
+                                'context_files': f'{eni_source_type}/{eni_source_subtype}',
+                                'record_count': len(eni_data),
+                                'total_eni_ids': len(group_eni_ids)
+                            }
+                        )
+                        if json_file:
+                            result['files_created'].append(json_file)
+                            if self.enhanced_logger:
+                                self.enhanced_logger.log_file_creation(json_file, "structured_insight")
+
+                        # Save to Supabase per group
+                        if self.supabase_processor:
+                            try:
+                                import json as _json
+                                import re as _re
+                                from data_processing.schema import StructuredInsightContent
+
+                                structured_content = None
+                                def _all_fields_empty(si: StructuredInsightContent) -> bool:
+                                    return not any([
+                                        (si.personal or '').strip(),
+                                        (si.business or '').strip(),
+                                        (si.investing or '').strip(),
+                                        (getattr(si, 'three_i', '') or '').strip(),
+                                        (si.deals or '').strip(),
+                                        (si.introductions or '').strip(),
+                                    ])
+
+                                def _parse_markdown_sections(md_text: str) -> StructuredInsightContent:
+                                    if not md_text:
+                                        return StructuredInsightContent(
+                                            personal="", business="", investing="", three_i="", deals="", introductions=""
+                                        )
+                                    def _extract(section: str) -> str:
+                                        pattern = rf"^## {section}\n([\s\S]*?)(?=\n## |\Z)"
+                                        m = _re.search(pattern, md_text, _re.MULTILINE)
+                                        return (m.group(1).strip() if m else "")
+                                    return StructuredInsightContent(
+                                        personal=_extract("Personal"),
+                                        business=_extract("Business"),
+                                        investing=_extract("Investing"),
+                                        three_i=_extract("3i"),
+                                        deals=_extract("Deals"),
+                                        introductions=_extract("Introductions"),
+                                    )
+                                if insights:
+                                    json_match = _re.search(r'```json\s*(.*?)\s*```', insights, _re.DOTALL)
+                                    if json_match:
+                                        try:
+                                            parsed_json = _json.loads(json_match.group(1))
+                                            if isinstance(parsed_json, dict) and 'existing_member_summary' in parsed_json:
+                                                structured_content = _parse_markdown_sections(parsed_json.get('existing_member_summary') or "")
+                                            else:
+                                                structured_content = StructuredInsightContent(**parsed_json)
+                                        except (_json.JSONDecodeError, Exception):
+                                            structured_content = None
+                                    else:
+                                        try:
+                                            parsed_json = _json.loads(insights)
+                                            if isinstance(parsed_json, dict) and 'existing_member_summary' in parsed_json:
+                                                structured_content = _parse_markdown_sections(parsed_json.get('existing_member_summary') or "")
+                                            else:
+                                                structured_content = StructuredInsightContent(**parsed_json)
+                                        except (_json.JSONDecodeError, Exception):
+                                            # Try generic fenced block without language
+                                            generic_match = _re.search(r'```\s*(.*?)\s*```', insights, _re.DOTALL)
+                                            if generic_match:
+                                                try:
+                                                    parsed_json = _json.loads(generic_match.group(1))
+                                                    if isinstance(parsed_json, dict) and 'existing_member_summary' in parsed_json:
+                                                        structured_content = _parse_markdown_sections(parsed_json.get('existing_member_summary') or "")
+                                                    else:
+                                                        structured_content = StructuredInsightContent(**parsed_json)
+                                                except (_json.JSONDecodeError, Exception):
+                                                    structured_content = None
+                                            if not structured_content:
+                                                # Final fallback: parse markdown sections from free text
+                                                structured_content = _parse_markdown_sections(insights)
+
+                                if structured_content:
+                                    # If JSON parsed but all fields empty, attempt markdown fallback once
+                                    if _all_fields_empty(structured_content) and insights:
+                                        md_fallback = _parse_markdown_sections(insights)
+                                        if not _all_fields_empty(md_fallback):
+                                            structured_content = md_fallback
+                                    # Compute token metrics for this accepted iteration
+                                    rendered_full_tokens = 0
+                                    try:
+                                        rendered_full_tokens = int(token_stats.get('rendered_full_tokens') or 0)
+                                    except Exception:
+                                        rendered_full_tokens = 0
+                                    if rendered_full_tokens <= 0:
+                                        rendered_full_tokens = estimate_tokens(full_rendered_prompt)
+                                    est_input_tokens_delta = rendered_full_tokens or 0
+                                    est_insights_tokens_current = accepted_output_tokens or estimate_tokens(insights)
+                                    generation_time_seconds_delta = float(accepted_duration or 0.0)
+
+                                    logger.info(
+                                        f"[TOKENS] input+={est_input_tokens_delta} current_output={est_insights_tokens_current} gen_time+={generation_time_seconds_delta:.2f}"
+                                    )
+
+                                    # Accumulate per-contact summary
+                                    contact_est_input_tokens += est_input_tokens_delta
+                                    contact_est_insights_tokens_latest = est_insights_tokens_current
+                                    contact_generation_time_seconds += generation_time_seconds_delta
+
+                                    supabase_result, was_created = self.supabase_processor.process_insight(
+                                        contact_id=contact_id,
+                                        # Use consolidated ENI id so all groups merge into a single record per contact
+                                        eni_id=consolidated_eni_id,
+                                        insight_content=structured_content,
+                                        metadata={
+                                            # Only append to arrays; do not set single-value type/subtype columns
+                                            'eni_source_types': [eni_source_type],
+                                            'eni_source_subtypes': [eni_source_subtype],
+                                            'system_prompt_key': system_prompt_key,
+                                            'context_files': f'{eni_source_type}/{eni_source_subtype}',
+                                            'record_count': len(eni_data),
+                                            'total_eni_ids': len(group_eni_ids)
+                                        },
+                                        est_input_tokens_delta=est_input_tokens_delta,
+                                        est_insights_tokens_current=est_insights_tokens_current,
+                                        generation_time_seconds_delta=generation_time_seconds_delta,
+                                    )
+                                    if supabase_result:
+                                        action = "created" if was_created else "updated"
+                                        logger.info(f"Successfully {action} structured insight in Supabase for contact {contact_id} ({eni_source_type}/{eni_source_subtype})")
+                                        result['supabase_record_id'] = str(supabase_result.id)
+                                        result['supabase_action'] = action
+                                else:
+                                    logger.warning(f"Failed to parse insight content for Supabase storage: {contact_id} ({eni_source_type}/{eni_source_subtype})")
+                            except Exception as e:
+                                logger.error(f"Error saving to Supabase for contact {contact_id} ({eni_source_type}/{eni_source_subtype}): {e}")
+                                result['errors'].append(f"Supabase save error: {str(e)}")
+
+                        # Sync to Airtable per group (removed - now Supabase-driven after all groups)
+                        # (No-op here to prevent multiple writes per contact)
+
+                        # Mark group ENIs as processed
+                        records_to_mark = [
+                            {
+                                'eni_id': eni_id,
+                                'contact_id': contact_id,
+                                'processing_status': 'completed',
+                                'processor_version': '1.0.0',
+                                'metadata': {'batch_id': group_eni_id}
+                            }
+                            for eni_id in group_eni_ids
+                        ]
+                        successful_count, failed_count = self.bigquery_connector.batch_mark_processed(records_to_mark)
+                        if successful_count > 0:
+                            logger.info(f"Marked {successful_count} ENI IDs as processed in BigQuery for contact {contact_id} ({eni_source_type}/{eni_source_subtype})")
+                        if failed_count > 0:
+                            logger.warning(f"Failed to mark {failed_count} ENI IDs as processed in BigQuery for contact {contact_id} ({eni_source_type}/{eni_source_subtype})")
+                        result['processed_eni_ids'].extend(group_eni_ids)
+
+                except Exception as e:
+                    error_msg = f"Error processing group for {contact_id}, {eni_source_type}/{eni_source_subtype}: {str(e)}"
+                    result['errors'].append(error_msg)
+                    logger.error(error_msg)
+                    continue
+
+            logger.info(f"Per-group processing complete for contact {contact_id}. Total groups with data: {1 if total_loaded>0 else 0}, total records: {total_loaded}")
+
+            # Token-loss summary for this contact
+            if result['token_loss_events'] or result['token_loss_groups_skipped']:
+                logger.info(
+                    (
+                        f"[TOKEN-LOSS] Summary for {contact_id}: "
+                        f"events={result['token_loss_events']} | "
+                        f"groups_skipped={result['token_loss_groups_skipped']} | "
+                        f"records_skipped={result['token_loss_records_skipped']}"
+                    )
+                )
             
-            original_record_count = len(contact_data)
-            
-            # Apply processing filter if configured
-            if self.processing_filter:
-                filtered_data, filter_stats = self.processing_filter.filter_dataframe(contact_data)
-                
-                if filter_stats['skipped_count'] > 0:
-                    logger.info(f"Processing filter: {filter_stats['filtered_count']}/{filter_stats['original_count']} "
-                              f"records included for contact {contact_id} ({filter_stats['filter_efficiency']:.1f}%)")
-                
-                contact_data = filtered_data
-                result['filter_stats'] = filter_stats
-                
-                if contact_data.empty:
-                    logger.info(f"All records filtered out for contact {contact_id}")
-                    result['success'] = True
-                    return result
-            else:
-                logger.debug(f"No processing filter applied - processing all {original_record_count} records")
-            
-            # Only process structured insights (removed member summary functionality)
-            result_data = self._process_combined_structured_insight(
-                contact_id, contact_data, system_prompt_key, dry_run
+            # Token metrics summary for this contact
+            logger.info(
+                f"[TOKENS] Summary for {contact_id}: est_input_tokens={contact_est_input_tokens} "
+                f"est_insights_tokens={contact_est_insights_tokens_latest} generation_time_seconds={contact_generation_time_seconds:.2f}"
             )
-            result.update(result_data)
+
+            # Perform single Supabase-driven Airtable sync per contact (post-processing)
+            if not dry_run and self.supabase_airtable_sync and self.structured_airtable_writer:
+                try:
+                    sync_res = self.supabase_airtable_sync.sync_contact_to_airtable(contact_id, force_update=True)
+                    result['airtable_final_sync'] = {
+                        'success': sync_res.success,
+                        'action': sync_res.action,
+                        'airtable_record_id': sync_res.airtable_record_id,
+                        'error_message': sync_res.error_message
+                    }
+                    # Keep count compatibility with existing summaries
+                    result['airtable_records'].append(result['airtable_final_sync'])
+                    if self.enhanced_logger:
+                        self.enhanced_logger.log_airtable_sync(contact_id, sync_res.success, f"supabase_post_process({sync_res.action})")
+                except Exception as e:
+                    err = f"Post-processing Airtable sync failed for {contact_id}: {e}"
+                    result['errors'].append(err)
+                    logger.error(err)
+
+            result['success'] = len(result['errors']) == 0
+            
+            # Return per-contact token metrics for optional CLI printing
+            result['est_input_tokens'] = contact_est_input_tokens
+            result['est_insights_tokens'] = contact_est_insights_tokens_latest
+            result['generation_time_seconds'] = contact_generation_time_seconds
             
             return result
             
@@ -411,7 +814,7 @@ class MemberInsightsProcessor:
             existing_insight = None
             if self.supabase_client:
                 try:
-                    existing_insight = self.supabase_client.get_insight_by_contact_id(contact_id)
+                    existing_insight = self.supabase_client.get_latest_insight_by_contact_id(contact_id, generator='structured_insight')
                     if existing_insight:
                         logger.info(f"Found existing structured insight for contact {contact_id}")
                     else:
@@ -421,15 +824,27 @@ class MemberInsightsProcessor:
             
             # Initialize member summary structure (use existing or create new)
             if existing_insight and hasattr(existing_insight, 'insights'):
-                # Start with existing insights content
-                member_summary = {
-                    "personal": existing_insight.personal or "",
-                    "business": existing_insight.business or "",
-                    "investing": existing_insight.investing or "",
-                    "3i": existing_insight.three_i or "",
-                    "deals": existing_insight.deals or "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
-                    "introductions": existing_insight.introductions or "**Looking to meet:**\n\n**Avoid introductions to:**\n"
-                }
+                # Start with existing insights content - access from JSON structure
+                insights_content = existing_insight.insights
+                if isinstance(insights_content, dict):
+                    member_summary = {
+                        "personal": insights_content.get('personal', ''),
+                        "business": insights_content.get('business', ''),
+                        "investing": insights_content.get('investing', ''),
+                        "3i": insights_content.get('3i') or insights_content.get('three_i', ''),
+                        "deals": insights_content.get('deals', "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n"),
+                        "introductions": insights_content.get('introductions', "**Looking to meet:**\n\n**Avoid introductions to:**\n")
+                    }
+                else:
+                    # If insights is a StructuredInsightContent object
+                    member_summary = {
+                        "personal": getattr(insights_content, 'personal', '') or '',
+                        "business": getattr(insights_content, 'business', '') or '',
+                        "investing": getattr(insights_content, 'investing', '') or '',
+                        "3i": getattr(insights_content, 'three_i', '') or '',
+                        "deals": getattr(insights_content, 'deals', '') or "This Member **Has Experience** and Is Comfortable Diligencing These Asset Classes & Sectors\n\nThis Member **Is Interested In Exploring** These Asset Classes, Sectors, and Strategies\n\nThis Member **Wants to Avoid** These Asset Classes, Sectors, and Strategies\n",
+                        "introductions": getattr(insights_content, 'introductions', '') or "**Looking to meet:**\n\n**Avoid introductions to:**\n"
+                    }
                 logger.info(f"Loaded existing insights as baseline for {contact_id}")
             else:
                 # Initialize empty member summary structure
@@ -445,44 +860,40 @@ class MemberInsightsProcessor:
             # Group data by ENI source type and subtype
             grouped_data = contact_data.groupby(['eni_source_type', 'eni_source_subtype'])
             
-            # Build comprehensive context from all ENI groups
-            all_contexts = []
-            all_member_data = []
+            # Build per-group context variables with token budgeting
+            per_group_blocks = []
             total_eni_ids = []
             
             for (eni_source_type, eni_source_subtype), group_data in grouped_data:
                 try:
-                    logger.info(f"Collecting context for {eni_source_type}/{eni_source_subtype} for contact {contact_id}")
-                    
-                    # Load context for this ENI source type/subtype
-                    context_file_paths = self.config_loader.get_context_file_paths(eni_source_type, eni_source_subtype)
-                    
-                    context_parts = []
-                    
-                    # Load default context first
-                    if context_file_paths['default']:
-                        default_content = self.markdown_reader.read_markdown_file(context_file_paths['default'])
-                        if default_content:
-                            context_parts.append(f"=== DEFAULT CONTEXT FOR {eni_source_type.upper()} ===\n{default_content}")
-                    
-                    # Load subtype-specific context if available
-                    if context_file_paths['subtype']:
-                        subtype_content = self.markdown_reader.read_markdown_file(context_file_paths['subtype'])
-                        if subtype_content:
-                            context_parts.append(f"=== SUBTYPE CONTEXT FOR {eni_source_type.upper()}/{eni_source_subtype.upper()} ===\n{subtype_content}")
-                    
-                    # Add context with data type label
-                    if context_parts:
-                        group_context = f"=== ENI GROUP: {eni_source_type}/{eni_source_subtype} ({len(group_data)} records) ===\n"
-                        group_context += "\n\n".join(context_parts)
-                        all_contexts.append(group_context)
-                    
-                    # Add member data for this group
-                    group_member_data = f"=== DATA FOR {eni_source_type.upper()}/{eni_source_subtype.upper()} ===\n"
-                    for _, row in group_data.iterrows():
-                        if pd.notna(row.get('description')):
-                            group_member_data += f"- {row['description']}\n"
-                    all_member_data.append(group_member_data)
+                    # Build context variables for this group
+                    if not self.context_manager:
+                        raise RuntimeError("ContextManager not initialized")
+
+                    ctx_vars = self.context_manager.build_context_variables(
+                        contact_id=contact_id,
+                        eni_source_type=eni_source_type,
+                        eni_source_subtype=eni_source_subtype,
+                        eni_group_df=group_data,
+                        system_prompt_key=system_prompt_key,
+                    )
+
+                    # Render a compact per-group block using the four variables
+                    group_header = f"=== ENI GROUP: {eni_source_type}/{eni_source_subtype} ({len(group_data)} records) ===\n"
+                    type_block = (
+                        f"## ENI Source Type Context ({eni_source_type})\n"
+                        f"{ctx_vars['eni_source_type_context']}\n\n"
+                    ) if ctx_vars.get('eni_source_type_context') else ""
+                    subtype_block = (
+                        f"## ENI Source Subtype Context ({eni_source_subtype})\n"
+                        f"{ctx_vars['eni_source_subtype_context']}\n\n"
+                    ) if ctx_vars.get('eni_source_subtype_context') else ""
+                    new_data_block = (
+                        f"## New Data To Process ({ctx_vars.get('rows_used', 0)} rows)\n"
+                        f"{ctx_vars['new_data_to_process']}\n"
+                    )
+
+                    per_group_blocks.append(group_header + type_block + subtype_block + new_data_block)
                     
                     # Collect ENI IDs
                     eni_ids_in_group = group_data['eni_id'].tolist()
@@ -494,20 +905,21 @@ class MemberInsightsProcessor:
                     logger.error(error_msg)
                     continue
             
-            # Combine all contexts and data
-            comprehensive_context = "\n\n".join(all_contexts)
-            comprehensive_member_data = "\n\n".join(all_member_data)
+            # Combine all group blocks; include current structured insight once at the top
+            current_structured_insight = ""
+            if self.context_manager:
+                current_structured_insight = self.context_manager.get_current_structured_insight(
+                    contact_id, system_prompt_key
+                )
+            combined_groups_context = "\n\n".join(per_group_blocks)
             
             # Build final prompt for AI processing
             final_prompt_context = f"""
 EXISTING MEMBER SUMMARY (to be updated):
-{member_summary}
+{current_structured_insight}
 
-COMPREHENSIVE CONTEXT FROM ALL ENI GROUPS:
-{comprehensive_context}
-
-ALL MEMBER DATA TO ANALYZE:
-{comprehensive_member_data}
+CONTEXT PACKAGES BY ENI GROUP:
+{combined_groups_context}
 """
             
             # Enhanced logging for AI call
@@ -684,8 +1096,24 @@ ALL MEMBER DATA TO ANALYZE:
                         if self.enhanced_logger:
                             self.enhanced_logger.log_airtable_sync(contact_id, False, "structured_insight")
                 
-                # Mark all ENI IDs as processed
-                self.log_manager.mark_multiple_as_processed(contact_id, total_eni_ids)
+                # Mark all ENI IDs as processed in BigQuery
+                records_to_mark = [
+                    {
+                        'eni_id': eni_id,
+                        'contact_id': contact_id,
+                        'processing_status': 'completed',
+                        'processor_version': '1.0.0',
+                        'metadata': {'batch_id': combined_eni_id}
+                    }
+                    for eni_id in total_eni_ids
+                ]
+                
+                successful_count, failed_count = self.bigquery_connector.batch_mark_processed(records_to_mark)
+                if successful_count > 0:
+                    logger.info(f"Marked {successful_count} ENI IDs as processed in BigQuery for contact {contact_id}")
+                if failed_count > 0:
+                    logger.warning(f"Failed to mark {failed_count} ENI IDs as processed in BigQuery for contact {contact_id}")
+                    
                 result['processed_eni_ids'].extend(total_eni_ids)
             
             logger.info(f"Successfully processed combined structured insight for contact {contact_id} with {len(total_eni_ids)} ENI IDs")
@@ -737,6 +1165,10 @@ ALL MEMBER DATA TO ANALYZE:
             'total_processed_eni_ids': 0,
             'total_files_created': 0,
             'total_airtable_records': 0,
+            # Aggregated token-loss stats
+            'token_loss_events': 0,
+            'token_loss_groups_skipped': 0,
+            'token_loss_records_skipped': 0,
             'contact_results': {},
             'errors': [],
             'start_time': datetime.now().isoformat(),
@@ -777,6 +1209,10 @@ ALL MEMBER DATA TO ANALYZE:
                         summary['total_processed_eni_ids'] += len(result['processed_eni_ids'])
                         summary['total_files_created'] += len(result['files_created'])
                         summary['total_airtable_records'] += len(result['airtable_records'])
+                        # Aggregate token-loss stats
+                        summary['token_loss_events'] += result.get('token_loss_events', 0)
+                        summary['token_loss_groups_skipped'] += result.get('token_loss_groups_skipped', 0)
+                        summary['token_loss_records_skipped'] += result.get('token_loss_records_skipped', 0)
                     else:
                         summary['failed_contacts'] += 1
                         summary['errors'].extend(result['errors'])
@@ -803,6 +1239,9 @@ Processing Complete:
 - Files Created: {summary['total_files_created']}
 - Airtable Records: {summary['total_airtable_records']}
 - Errors: {len(summary['errors'])}
+- Token-Loss Events: {summary['token_loss_events']}
+- Token-Loss Groups Skipped: {summary['token_loss_groups_skipped']}
+- Token-Loss Records Skipped: {summary['token_loss_records_skipped']}
 """)
             
             return summary
@@ -824,8 +1263,8 @@ Processing Complete:
             stats = {
                 'log_statistics': self.log_manager.get_processing_stats(),
                 'output_files': len(self.markdown_writer.list_summary_files()),
-                'available_eni_types': self.config_loader.get_available_eni_types(),
-                'available_prompts': list(self.config_loader.get_all_system_prompts().keys()),
+                'available_eni_types': self.context_manager.get_available_eni_types(),
+                'available_prompts': list(self.context_manager.get_all_system_prompts().keys()),
                 'system_status': self.validate_setup()
             }
             
@@ -993,6 +1432,19 @@ def main():
             print(f"Success: {result['success']}")
             print(f"Processed ENI IDs: {len(result['processed_eni_ids'])}")
             print(f"Errors: {len(result['errors'])}")
+            # Token-loss summary for single-contact run
+            if result.get('token_loss_events') or result.get('token_loss_groups_skipped'):
+                print(
+                    f"Token-Loss Summary: events={result.get('token_loss_events', 0)} | "
+                    f"groups_skipped={result.get('token_loss_groups_skipped', 0)} | "
+                    f"records_skipped={result.get('token_loss_records_skipped', 0)}"
+                )
+            # Token metrics summary for single-contact run
+            print(
+                f"[TOKENS] Summary for {args.contact_id}: est_input_tokens={result.get('est_input_tokens', 0)} "
+                f"est_insights_tokens={result.get('est_insights_tokens', 0)} "
+                f"generation_time_seconds={result.get('generation_time_seconds', 0.0):.2f}"
+            )
         else:
             # Process multiple contacts
             # Ensure BigQuery connection first

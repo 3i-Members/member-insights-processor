@@ -100,18 +100,30 @@ def test_main_pipeline_with_supabase(contact_id: str):
         if processor.supabase_client and result.get('success'):
             print(f"\n🔍 Verifying Supabase Storage...")
             try:
-                queried_insight = processor.supabase_client.get_insight_by_contact_id(contact_id)
+                queried_insight = processor.supabase_client.get_latest_insight_by_contact_id(contact_id, generator='structured_insight')
                 if queried_insight:
-                    print(f"✅ Found insight in Supabase")
+                    print(f"✅ Found latest insight in Supabase")
                     print(f"   Database ID: {queried_insight.id}")
                     print(f"   Generated At: {queried_insight.metadata.generated_at}")
                     print(f"   ENI Source Types: {queried_insight.metadata.eni_source_types}")
-                    if queried_insight.personal:
-                        print(f"   Personal Section: {len(queried_insight.personal)} characters")
-                    if queried_insight.business:
-                        print(f"   Business Section: {len(queried_insight.business)} characters")
+                    print(f"   Version: {queried_insight.metadata.version}")
+                    print(f"   Is Latest: {queried_insight.is_latest}")
+                    
+                    # Access insights from the JSON structure
+                    insights_content = queried_insight.insights
+                    if isinstance(insights_content, dict):
+                        personal = insights_content.get('personal', '')
+                        business = insights_content.get('business', '')
+                    else:
+                        personal = getattr(insights_content, 'personal', '') or ''
+                        business = getattr(insights_content, 'business', '') or ''
+                    
+                    if personal:
+                        print(f"   Personal Section: {len(personal)} characters")
+                    if business:
+                        print(f"   Business Section: {len(business)} characters")
                 else:
-                    print("❌ No insight found in Supabase")
+                    print("❌ No latest insight found in Supabase")
             except Exception as e:
                 print(f"❌ Error querying Supabase: {e}")
         

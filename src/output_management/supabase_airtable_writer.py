@@ -60,86 +60,67 @@ class SupabaseAirtableSync:
     
     def sync_contact_to_airtable(self, contact_id: str, force_update: bool = False) -> SyncResult:
         """
-        Sync a single contact's insights to Airtable.
+        Sync a single contact's latest structured insight to Airtable.
         
         Args:
-            contact_id: Contact ID to sync
-            force_update: Force update even if already synced recently
+            contact_id: Contact identifier
+            force_update: Force update even if record exists
             
         Returns:
             SyncResult: Result of the sync operation
         """
-        logger.debug(f"Syncing contact {contact_id} to Airtable")
-        
         try:
-            # Get latest insight from Supabase
-            insight = self.supabase_client.get_insight_by_contact_id(contact_id)
-            
+            # Get latest structured insight from Supabase
+            insight = self.supabase_client.get_latest_insight_by_contact_id(contact_id, generator='structured_insight')
             if not insight:
                 return SyncResult(
                     contact_id=contact_id,
                     success=False,
-                    action='failed',
-                    error_message='No insight found in Supabase'
+                    action="failed",
+                    error_message="No latest structured insight found in Supabase"
                 )
             
-            # Check if we should skip based on last sync time
+            # Check if we should skip this sync
             if not force_update and self._should_skip_sync(insight):
                 return SyncResult(
                     contact_id=contact_id,
                     success=True,
-                    action='skipped',
-                    error_message='Recently synced, skipping'
+                    action="skipped",
+                    error_message="Sync skipped based on skip criteria"
                 )
             
-            # Convert insight to structured JSON for Airtable
-            structured_data = self._convert_insight_to_airtable_format(insight)
-            
-            # Find master record in Airtable
-            master_record_id = self.airtable_writer.find_master_record_by_contact_id(contact_id)
-            
-            if not master_record_id:
-                return SyncResult(
-                    contact_id=contact_id,
-                    success=False,
-                    action='failed',
-                    error_message='Master record not found in Airtable'
-                )
+            # Convert to Airtable format
+            airtable_data = self._convert_insight_to_airtable_format(insight)
             
             # Sync to Airtable
-            airtable_result = self.airtable_writer.create_note_submission_record(
+            sync_res = self.airtable_writer.create_note_submission_record(
                 contact_id=contact_id,
-                structured_json=structured_data
+                structured_json=airtable_data
             )
             
-            if not airtable_result.success:
+            if sync_res and getattr(sync_res, 'success', False):
+                action = "created" if getattr(sync_res, 'created', False) else ("updated" if getattr(sync_res, 'updated', False) else "created")
+                return SyncResult(
+                    contact_id=contact_id,
+                    success=True,
+                    action=action,
+                    airtable_record_id=getattr(sync_res, 'record_id', None)
+                )
+            else:
                 return SyncResult(
                     contact_id=contact_id,
                     success=False,
-                    action='failed',
-                    error_message=airtable_result.error or 'Unknown Airtable error'
+                    action="failed",
+                    error_message=getattr(sync_res, 'error', "Failed to create/update Airtable record")
                 )
-            
-            action = 'updated' if airtable_result.updated else 'created'
-            
-            logger.info(f"Successfully {action} Airtable record for {contact_id}")
-            
-            return SyncResult(
-                contact_id=contact_id,
-                success=True,
-                action=action,
-                airtable_record_id=airtable_result.record_id
-            )
-            
+                
         except Exception as e:
-            error_msg = f"Failed to sync {contact_id}: {str(e)}"
-            logger.error(error_msg)
-            
+            logger.error(f"Error syncing contact {contact_id} to Airtable: {e}")
             return SyncResult(
                 contact_id=contact_id,
                 success=False,
-                action='failed',
-                error_message=error_msg
+                action="failed",
+                error_message=str(e)
             )
     
     def sync_recent_insights(self, 
@@ -307,20 +288,20 @@ class SupabaseAirtableSync:
     
     def _convert_insight_to_airtable_format(self, insight: StructuredInsight) -> Dict[str, Any]:
         """Convert StructuredInsight to Airtable-compatible format."""
-        # Extract the insights content
+        # Extract the insights content from the JSON structure
         if hasattr(insight.insights, 'dict'):
             insights_dict = insight.insights.dict()
         elif isinstance(insight.insights, dict):
             insights_dict = insight.insights
         else:
-            # Fallback - convert to dict representation
+            # If insights is a StructuredInsightContent object, extract its fields
             insights_dict = {
-                'personal': insight.personal,
-                'business': insight.business,
-                'investing': insight.investing,
-                '3i': insight.three_i,
-                'deals': insight.deals,
-                'introductions': insight.introductions
+                'personal': getattr(insight.insights, 'personal', ''),
+                'business': getattr(insight.insights, 'business', ''),
+                'investing': getattr(insight.insights, 'investing', ''),
+                '3i': getattr(insight.insights, 'three_i', ''),
+                'deals': getattr(insight.insights, 'deals', ''),
+                'introductions': getattr(insight.insights, 'introductions', '')
             }
         
         # Add metadata

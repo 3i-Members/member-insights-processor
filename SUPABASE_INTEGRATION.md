@@ -493,3 +493,37 @@ For issues and questions:
 - Review logs in `logs/processing.log`
 - Validate configuration with the setup tools
 - Test connection and schema with provided utilities 
+
+## Upsert Semantics (Updated)
+
+- One consolidated record per contact using `eni_id = COMBINED-{contact_id}-ALL`.
+- On each ENI group iteration we:
+  - Append unique entries to `eni_source_types` and `eni_source_subtypes` arrays
+  - Increment `total_eni_ids` by the number of ENIs in the current group
+  - Increment `record_count` by the number of rows processed in the current group
+  - Keep `generated_at` from the first creation; `updated_at` is managed by trigger
+  - Increment `version` on every update
+- We no longer update `eni_source_type` and `eni_source_subtype` single-value columns. They remain for legacy compatibility.
+
+### Rationale
+
+- Reduces duplicate rows per contact and ensures Airtable sees a single, consolidated insight.
+- Preserves a full audit of which source types/subtypes contributed using arrays.
+
+### Migration Notes
+
+- Existing rows with only single-value columns can be backfilled into arrays with a simple SQL migration if desired.
+
+```sql
+-- Example (adjust to your needs):
+update elvis__structured_insights
+set eni_source_types = case
+  when eni_source_types is null then array[eni_source_type]
+  else eni_source_types || array[eni_source_type]
+end,
+    eni_source_subtypes = case
+  when eni_source_subtypes is null then array[eni_source_subtype]
+  else eni_source_subtypes || array[eni_source_subtype]
+end
+where eni_source_type is not null or eni_source_subtype is not null;
+``` 

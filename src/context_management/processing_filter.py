@@ -76,23 +76,23 @@ class ProcessingFilter:
 
             rule = self.processing_rules[eni_type]
 
-            # Handle "all" rule - process all subtypes for this ENI type
-            if rule == "all":
+            # Normalize null subtypes to 'null' for matching
+            normalized_subtype = eni_subtype
+            if not eni_subtype or str(eni_subtype).strip() == '' or str(eni_subtype).lower() in ['none', 'nan']:
+                normalized_subtype = 'null'
+            
+            # NULL subtypes are ALWAYS processed regardless of rule configuration
+            if normalized_subtype == 'null':
                 return True
 
-            # Handle "none" rule - skip all subtypes for this ENI type
+            # Handle "none" rule or empty rule - only NULL subtypes are processed
             if rule == "none" or rule is None:
                 if self.processing_settings.get('log_skipped_records', False):
-                    logger.debug(f"Skipping {eni_type}/{eni_subtype}: ENI type marked as 'none'")
+                    logger.debug(f"Skipping {eni_type}/{eni_subtype}: only NULL subtypes processed (no explicit subtypes defined)")
                 return False
 
             # Handle list of specific subtypes
             if isinstance(rule, list):
-                # Normalize null subtypes to 'null' for matching
-                normalized_subtype = eni_subtype
-                if not eni_subtype or str(eni_subtype).strip() == '' or str(eni_subtype).lower() in ['none', 'nan']:
-                    normalized_subtype = 'null'
-                
                 should_process = normalized_subtype in rule
                 
                 if not should_process and self.processing_settings.get('log_skipped_records', False):
@@ -100,8 +100,8 @@ class ProcessingFilter:
                 
                 return should_process
 
-            # If rule is not recognized, default to not processing
-            logger.warning(f"Unknown processing rule for {eni_type}: {rule}")
+            # If rule is not recognized, only process NULL subtypes
+            logger.warning(f"Invalid processing rule for {eni_type}: {rule}. Expected list of subtypes. Only processing NULL subtypes.")
             return False
 
         except Exception as e:
@@ -178,7 +178,7 @@ class ProcessingFilter:
             eni_type: The ENI type to check
             
         Returns:
-            Optional[List[str]]: List of allowed subtypes, "all", or None if not configured
+            Optional[List[str]]: List of allowed subtypes, or None if not configured
         """
         return self.processing_rules.get(eni_type)
 
@@ -270,9 +270,7 @@ class ProcessingFilter:
 
         # Summarize processing rules
         for eni_type, rule in self.processing_rules.items():
-            if rule == "all":
-                summary['processing_rules_summary'][eni_type] = "All subtypes"
-            elif isinstance(rule, list):
+            if isinstance(rule, list):
                 summary['processing_rules_summary'][eni_type] = f"{len(rule)} specific subtypes: {rule}"
             else:
                 summary['processing_rules_summary'][eni_type] = str(rule)

@@ -32,15 +32,12 @@ supabase:
 # Based on actual data from eni_types_output.csv
 eni_mappings:
   airtable_affiliations:
-    null: "context/airtable_affiliations/default.md"
     default: "context/airtable_affiliations/default.md"
 
   airtable_deals_sourced:
-    null: "context/airtable_deals_sourced/default.md"
     default: "context/airtable_deals_sourced/default.md"
 
   airtable_notes:
-    null: "context/airtable_notes/default.md"
     default: "context/airtable_notes/default.md"
     intro_preferences: "context/airtable_notes/intro_preferences.md"
     investing_preferences: "context/airtable_notes/investing_preferences.md"
@@ -52,7 +49,6 @@ eni_mappings:
     default: "context/member_requests/requested.md"
 
   pipedrive_notes:
-    null: "context/pipedrive_notes/default.md"
     default: "context/pipedrive_notes/default.md"
 
   recurroo:
@@ -157,17 +153,17 @@ airtable:
 
 # AI Configuration
 # Choose between 'openai', 'gemini', or 'anthropic'
-ai_provider: "anthropic"
+ai_provider: "openai"
 
 # OpenAI Configuration
 openai:
   # Note: Set OPENAI_API_KEY as environment variable for security
-  model_name: "o1-mini"
+  model_name: "gpt-5-mini-2025-08-07"
   
   # Generation settings
   generation_config:
     temperature: 0.7
-    max_tokens: 8192
+    max_tokens: 400000
     top_p: 0.8
     presence_penalty: 0.0
     frequency_penalty: 0.0
@@ -221,7 +217,7 @@ anthropic:
 # Processing Configuration
 processing:
   # AI Provider selection
-  ai_provider: "anthropic"  # Choose 'openai', 'gemini', or 'anthropic'
+  ai_provider: "openai"  # Choose 'openai', 'gemini', or 'anthropic'
   
   # Maximum number of contacts to process in a single batch
   max_batch_size: 100
@@ -234,6 +230,11 @@ processing:
   
   # Default system prompt for processing
   default_system_prompt: "structured_insight"
+
+  # Token budgeting for context construction
+  context_window_tokens: 400000           # Total tokens available for prompt
+  reserve_output_tokens: 8000             # Reserve for model output generation
+  max_new_data_tokens_per_group: 12000    # Cap per ENI group for new data rows
   
   # Supabase integration settings
   enable_supabase_storage: true
@@ -275,3 +276,14 @@ features:
   enable_progress_tracking: true
   enable_error_recovery: true
   enable_memory_optimization: true 
+
+
+debug:
+  enable_debug_mode: true
+  llm_trace:
+    enabled: true
+    output_dir: "logs/llm_traces"
+    include_rendered_prompts: true
+    include_token_stats: true
+    include_response: true
+    file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"

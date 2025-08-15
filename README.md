@@ -124,14 +124,24 @@ source venv/bin/activate  # On macOS/Linux
 python src/main.py --validate
 ```
 
-### 2. Process a Single Contact
+### 2. Process a Single Contact (SQL-first, per-type iteration)
 ```bash
-# Process one contact (system will pick the next available)
+# Process one contact (SQL filters applied; per ENI type/subtype queries)
 python src/main.py --limit 1
 
 # Process a specific contact by ID
 python src/main.py --contact-id "CONTACT_123"
 ```
+
+Behavior:
+- For each contact, the system builds combinations from `config/processing_filters.yaml`:
+  - Always includes `(eni_source_type, NULL)` first
+  - Then includes any explicit subtypes listed for that type
+- For each combination, it runs one BigQuery query which:
+  - LEFT JOINs to `elvis.eni_processing_log` and filters `epl.eni_id IS NULL`
+  - Filters by `contact_id`, `eni_source_type`, and optional `eni_source_subtype`
+- Results are concatenated and passed to AI processing
+- After processing, all ENI IDs are batch-marked as processed in BigQuery
 
 ### 3. Process Multiple Contacts
 ```bash
@@ -183,20 +193,25 @@ The system now uses **intelligent upsert logic**:
 1. **Load existing insights** from Supabase before processing
 2. **Merge new data** with existing insights automatically  
 3. **Save to Supabase** with PostgreSQL JSONB for fast queries
-4. **Sync to Airtable** independently using decoupled service
+4. **Sync to Airtable** independently using decoupled service (post-processing)
+   - Consolidated upserts under a single per-contact ENI ID: `COMBINED-{contact_id}-ALL`
+   - Versioning maintained via `is_latest` flag and incremented `version`
 
 ### 🎯 **Decoupled Airtable Sync**
 
 Test the new Airtable sync that pulls from Supabase:
 
 ```bash
-# Test Supabase-powered Airtable sync for specific contact
+# Test Supabase-powered Airtable sync for specific contact (from tests)
 python test_airtable_sync.py
 
+# Bulk sync all latest insights where is_latest = true (new standalone script)
+PYTHONPATH="src" python scripts/airtable_sync_insights.py --limit 1000 --force
+
 # This will:
-# 1. Pull structured insight from Supabase
-# 2. Sync to Airtable on-demand
-# 3. Only process specified contact IDs (no database flooding)
+# 1. Select rows from Supabase where is_latest = true and generator='structured_insight'
+# 2. For each contact_id, fetch the latest insight and write a note submission to Airtable
+# 3. Run decoupled from the main processing pipeline
 ```
 
 ### 📊 **Memory Benefits**
@@ -223,7 +238,7 @@ The system uses a YAML configuration file (`config/config.yaml`) to define:
 bigquery:
   project_id: "your-project-id"
   dataset_id: "your-dataset-id"
-  table_name: "eni__vectorizer_all"
+  table_name: "eni_vectorizer__all"
 
 eni_mappings:
   professional:
@@ -290,8 +305,9 @@ print(f"Total processed contacts: {stats['log_statistics']['total_contacts']}")
 
 ### 1. BigQuery Connector
 - Connects to Google BigQuery
-- Loads contact data with filtering
-- Prevents reprocessing of already handled records
+- SQL-first filtering: queries per `(eni_source_type, eni_source_subtype)` with LEFT JOIN to processing log to exclude already processed ENIs
+- Always processes `eni_source_subtype IS NULL` first, then explicit subtypes from `config/processing_filters.yaml`
+- Prevents reprocessing of already handled records via `elvis.eni_processing_log`
 
 ### 2. Configuration Loader
 - Manages YAML configuration files
@@ -323,10 +339,13 @@ print(f"Total processed contacts: {stats['log_statistics']['total_contacts']}")
 - Type-safe insight processing with automatic serialization
 - Migration utilities for existing data
 
-### 8. Log Manager
-- Tracks processed ENI IDs
-- Prevents duplicate processing
-- Thread-safe file operations
+### 8. Processing Log (BigQuery)
+- Tracks processed ENI IDs in BigQuery table `elvis.eni_processing_log`
+- Excludes already processed items directly in SQL (warehouse-side)
+- Batch and single-record marking supported
+
+### 9. Legacy Local Log Manager (deprecated)
+- Previously tracked processed ENI IDs locally; replaced by BigQuery processing log
 
 ## Context Files
 
@@ -511,34 +530,210 @@ pytest tests/
 # Run with coverage
 pytest tests/ --cov=src/
 
+# Run BigQuery processing filters integration test (logs per combination)
+python tests/test_processing_filters.py --contact-id CNT-HvA002554 --verbose
+
+# Or use the runner script
+python scripts/run_processing_filters_test.py CNT-HvA002554
+
 # Run specific test module
 pytest tests/test_bigquery_connector.py
 ```
 
-## Contributing
+## Context Manager and Token Budgeting (New)
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+The pipeline now uses a consolidated `ContextManager` to assemble the full context for each LLM call with token-aware batching.
 
-## License
+- **Location**: `src/context_management/context_manager.py`
+- **Responsibilities**:
+  - Load config (`config/config.yaml`) and resolve context file paths per `eni_source_type` and `eni_source_subtype`
+  - Load and render the system prompt template (`config/system_prompts/structured_insight.md`)
+  - Fetch the latest existing structured insight from Supabase (if available)
+  - Build the four context variables for the template:
+    - `{{current_structured_insight}}` (JSON string; see below)
+    - `{{eni_source_type_context}}`
+    - `{{eni_source_subtype_context}}`
+    - `{{new_data_to_process}}` (rows are truncated to fit the remaining token budget)
+  - Estimate tokens and enforce budgets before adding new rows
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Context 1 Now Uses JSON
 
-## Support
+- The `{{current_structured_insight}}` variable is injected as a JSON object string with fields:
+  - `personal`, `business`, `investing`, `3i`, `deals`, `introductions`
+- If no prior summary exists, an all-empty JSON object is provided. This improves reliability for the LLM to append new content while preserving structure.
 
-For support and questions:
-- Create an issue in the repository
-- Check the documentation in the `docs/` directory
-- Review the example configurations and context files
+### Token Budget Settings
 
-## Changelog
+Configured under `processing` in `config/config.yaml`:
 
-### v1.0.0
-- Initial release with complete pipeline
-- BigQuery integration
-- Gemini Pro AI processing
-- Airtable sync functionality
-- Comprehensive logging and monitoring 
+```yaml
+processing:
+  context_window_tokens: 200000           # Total tokens available for the prompt
+  reserve_output_tokens: 8000             # Held back for model output
+  max_new_data_tokens_per_group: 12000    # Max tokens for appended data per ENI group
+```
+
+- The system prompt is rendered with the first three variables to compute base token usage.
+- Remaining tokens are allocated to `{{new_data_to_process}}` and rows are added until the budget is reached.
+
+## Context Preview (New)
+
+Use the preview to see exactly what would be sent to the LLM per ENI group, including the fully rendered system prompt and token stats.
+
+### Run the Preview
+
+```bash
+# Activate venv first
+source venv/bin/activate
+
+# Run the preview test (writes a markdown report to logs/)
+pytest tests/test_context_preview.py -q
+```
+
+- Output file: `logs/context_preview_<CONTACT_ID>_<TIMESTAMP>.md`
+- The report contains:
+  - A summary table:
+    - `run_number | eni_source_type | eni_source_sub_type | tokens_system_plus_source_ctx | remaining_tokens | total_rows_in_group | rows_processed | total_tokens_rendered`
+  - For each would-be LLM call:
+    - The full rendered system prompt (with all variables substituted)
+    - Token statistics and the number of rows actually included
+
+### Notes
+
+- The preview does not upsert to Supabase. It uses the latest available insight (or a default stub in tests) to simulate the context.
+- If BigQuery is unavailable, the preview uses a small synthetic dataset and still renders the context and token stats.
+
+## Per-Group Processing Mode (New)
+
+The processor now executes one LLM call per ENI group:
+- Group key: `(eni_source_type, eni_source_subtype)`
+- For each group with unprocessed rows:
+  - Query BigQuery via `load_contact_data_filtered(contact_id, type, subtype)`
+  - Build a token-budgeted context with `ContextManager.build_context_variables(...)`
+  - Call the LLM once for the group
+  - Upsert to Supabase per group
+  - Mark only that group’s ENIs as processed immediately
+
+Benefits: tighter, relevant context and reduced prompt size per call. Note this increases the number of total LLM calls proportionally to the number of populated groups.
+
+## Inline Citations Now Include `source_type`
+
+System prompt (`config/system_prompts/structured_insight.md`) requires every bullet to include sub-bullets with citations in the format:
+
+```
+[logged_date,eni_id,source_type]
+```
+
+The appended context (`new_data_to_process`) now provides per-row lines like:
+
+```
+- {description}
+  * [YYYY-MM-DD,ENI-...,airtable_notes]
+```
+
+This enables the model to produce correctly formatted citations.
+
+## ContextManager Highlights
+
+Location: `src/context_management/context_manager.py`
+- Centralizes config access (AI provider, Airtable, Supabase), context path resolution, system prompt loading, token estimation, and validation
+- Produces the four variables for the template:
+  - `{{current_structured_insight}}` (fetched from Supabase if available)
+  - `{{eni_source_type_context}}`
+  - `{{eni_source_subtype_context}}` (empty when subtype is null)
+  - `{{new_data_to_process}}` (token-limited; includes description + citation `[date,eni_id,source_type]` lines)
+- Includes system prompt in token estimation and limits appended rows to fit remaining budget
+
+## Context Preview (.md) Log
+
+Run:
+
+```bash
+pytest -q tests/test_context_preview.py
+```
+
+This generates `logs/context_preview_{CONTACT_ID}_{TIMESTAMP}.md` with:
+- A summary table of all would-be LLM calls (one per group)
+- Fully rendered system prompt per call (with the appended group data)
+- Token stats (base/system context, available for new data, rendered total)
+
+## Debug LLM Tracing (New)
+
+For production debugging and prompt analysis, the system can log detailed LLM traces when `debug.llm_trace.enabled` is set to `true` in `config/config.yaml`.
+
+### Configuration
+
+```yaml
+debug:
+  enable_debug_mode: true
+  llm_trace:
+    enabled: true
+    output_dir: "logs/llm_traces"
+    include_rendered_prompts: true
+    include_token_stats: true
+    include_response: true
+    file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"
+```
+
+### Usage
+
+```bash
+# Process with debug tracing enabled
+python src/main.py --contact-id "CNT-ABC123"
+```
+
+### Output
+
+Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.md` and include:
+
+- **Request sections**: Full rendered system prompt per ENI group (includes `structured_insight.md` template with all variables substituted)
+- **Token Stats**: Detailed token breakdown including:
+  - `existing_summary_tokens`: Tokens in current Supabase summary
+  - `base_tokens`: System prompt + context tokens
+  - `new_data_tokens_used`: Tokens for new data within budget
+  - `rendered_full_tokens`: Total prompt tokens sent to LLM
+- **Response sections**: Complete LLM output per group
+
+### Key Features
+
+- **Production Ready**: Runs during actual processing (not just preview)
+- **Per-Group Detail**: One request/response pair per `(eni_source_type, eni_source_subtype)` group
+- **Token metrics**: Rendered prompt tokens and output token estimates per group
+- **Template Verification**: Confirms `{{variable}}` substitution in `structured_insight.md`
+
+### Benefits
+
+- Debug prompt composition issues
+- Verify context variable injection
+- Monitor token usage patterns
+- Analyze LLM response quality
+- Troubleshoot template rendering
+
+## OpenAI Configuration Notes
+
+- Env var fallback supported: `OPENAI_API_KEY` or `OPEN_AI_KEY`
+- For modern models (gpt-5, o1, gpt-4.1, gpt-4o):
+  - Use `
+
+## Recent Changes (August 2025)
+
+- Supabase-driven, single Airtable sync per contact after all ENI groups complete
+- Consolidated Supabase upserts under `eni_id = COMBINED-{contact_id}-ALL`
+- Append-only arrays: `eni_source_types`, `eni_source_subtypes`; single columns are no longer updated
+- Iterative counters: `total_eni_ids`, `record_count`; `version` increments on every update
+- Context 1 now provided as JSON (not markdown) to improve LLM adherence to structure
+- Robust insight parsing: JSON is preferred; markdown responses are parsed into JSON sections before upsert
+- Token-loss retry is disabled for versioned insights; outputs are accepted and versioned
+- Fully-rendered prompt usage with `ContextManager` and `{{variable}}` substitution
+- Debug LLM tracing for rendered prompts, token stats, and responses (see Debug LLM Tracing section)
+
+### CLI example (single contact, foreground)
+
+```bash
+PYTHONPATH="src" python -m src.main --contact-id CNT-XXXXXXX --system-prompt structured_insight
+```
+
+### Token-loss report
+
+- Per-contact log line: `[TOKEN-LOSS] Summary for <contact_id>: events={n} | groups_skipped={m} | records_skipped={k}`
+- Single-contact console output now includes the same summary line
