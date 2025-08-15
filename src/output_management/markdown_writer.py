@@ -9,7 +9,7 @@ import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
@@ -412,14 +412,56 @@ def create_markdown_writer(output_directory: Optional[str] = None) -> MarkdownWr
 
 class LLMTraceWriter:
     def __init__(self, output_dir: str):
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._raw_output_dir = str(output_dir)
+        self._use_gcs = self._raw_output_dir.startswith("gs://")
+        self._gcs_client = None
+        self._gcs_bucket = None
+        self._gcs_bucket_name = None
+        self._gcs_prefix = None
+        if self._use_gcs:
+            self._gcs_bucket_name, self._gcs_prefix = self._parse_gcs_uri(self._raw_output_dir)
+        else:
+            self.output_dir = Path(self._raw_output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _resolve_path(self, contact_id: str, naming_pattern: str) -> Path:
         import time
         ts = time.strftime("%Y%m%d_%H%M%S")
         filename = naming_pattern.replace("{contact_id}", contact_id).replace("{timestamp}", ts)
+        if self._use_gcs:
+            # Return a pseudo path string for GCS (gs://bucket/prefix/filename)
+            prefix = self._gcs_prefix or ""
+            if prefix and not prefix.endswith("/"):
+                prefix = prefix + "/"
+            return Path(f"gs://{self._gcs_bucket_name}/{prefix}{filename}")
         return self.output_dir / filename
+
+    def _parse_gcs_uri(self, uri: str) -> Tuple[str, str]:
+        # gs://bucket[/optional/prefix]
+        without_scheme = uri[len("gs://"):]
+        parts = without_scheme.split("/", 1)
+        bucket = parts[0]
+        prefix = parts[1] if len(parts) > 1 else ""
+        return bucket, prefix
+
+    def _ensure_gcs(self) -> None:
+        if self._gcs_client is None:
+            try:
+                from google.cloud import storage  # Lazy import to avoid hard dependency when unused
+            except Exception as e:
+                raise RuntimeError(
+                    "google-cloud-storage is required to write LLM traces to GCS."
+                ) from e
+            self._gcs_client = storage.Client()
+            self._gcs_bucket = self._gcs_client.bucket(self._gcs_bucket_name)
+
+    def _gcs_blob_name_from_path(self, path: Path) -> str:
+        # path is like gs://bucket/prefix/file
+        text = str(path)
+        assert text.startswith("gs://"), "Expected gs:// path for GCS operations"
+        without_scheme = text[len("gs://"):]
+        parts = without_scheme.split("/", 1)
+        return parts[1] if len(parts) > 1 else ""
 
     def append_section(
         self,
@@ -427,6 +469,18 @@ class LLMTraceWriter:
         title: str,
         content: str,
     ) -> None:
+        if self._use_gcs and str(file_path).startswith("gs://"):
+            # Download existing, append, re-upload
+            self._ensure_gcs()
+            blob_name = self._gcs_blob_name_from_path(file_path)
+            blob = self._gcs_bucket.blob(blob_name)
+            existing = ""
+            if blob.exists():
+                existing = blob.download_as_text(encoding='utf-8')
+            updated = existing + f"\n## {title}\n\n" + content + "\n"
+            blob.upload_from_string(updated, content_type="text/markdown; charset=utf-8")
+            return
+        # Local filesystem
         with open(file_path, 'a', encoding='utf-8') as f:
             f.write(f"\n## {title}\n\n")
             f.write(content)
@@ -434,7 +488,15 @@ class LLMTraceWriter:
 
     def start_trace(self, contact_id: str, naming_pattern: str) -> Path:
         path = self._resolve_path(contact_id, naming_pattern)
+        if self._use_gcs and str(path).startswith("gs://"):
+            # Create object with header content
+            self._ensure_gcs()
+            blob_name = self._gcs_blob_name_from_path(path)
+            blob = self._gcs_bucket.blob(blob_name)
+            blob.upload_from_string(f"LLM Trace - Contact {contact_id}\n\n", content_type="text/markdown; charset=utf-8")
+            return path
+        # Local filesystem
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             f.write(f"LLM Trace - Contact {contact_id}\n\n")
-        return path 
+        return path

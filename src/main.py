@@ -463,11 +463,21 @@ class MemberInsightsProcessor:
             # Optional LLM trace setup
             debug_cfg = self.context_manager.config_data.get('debug', {}) or {}
             llm_trace_cfg = (debug_cfg.get('llm_trace') or {}) if debug_cfg else {}
-            llm_trace_enabled = bool(llm_trace_cfg.get('enabled'))
+            enable_debug_mode = bool(debug_cfg.get('enable_debug_mode'))
+            # Enable tracing if configured OR when remote_output_uri is set and debug mode is disabled
+            llm_trace_enabled = bool(llm_trace_cfg.get('enabled')) or (
+                (not enable_debug_mode) and bool(llm_trace_cfg.get('remote_output_uri'))
+            )
             trace_file_path = None
             trace_writer = None
             if llm_trace_enabled:
-                trace_writer = LLMTraceWriter(llm_trace_cfg.get('output_dir', 'logs/llm_traces'))
+                # Choose destination: when debug mode is disabled and remote_output_uri is provided, write to GCS
+                output_dir = (
+                    llm_trace_cfg.get('remote_output_uri')
+                    if (not enable_debug_mode and llm_trace_cfg.get('remote_output_uri'))
+                    else llm_trace_cfg.get('output_dir', 'logs/llm_traces')
+                )
+                trace_writer = LLMTraceWriter(output_dir)
                 trace_file_path = trace_writer.start_trace(
                     contact_id,
                     llm_trace_cfg.get('file_naming_pattern', 'llm_trace_{contact_id}_{timestamp}.md')

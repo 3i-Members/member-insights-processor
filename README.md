@@ -659,7 +659,7 @@ This generates `logs/context_preview_{CONTACT_ID}_{TIMESTAMP}.md` with:
 
 ## Debug LLM Tracing (New)
 
-For production debugging and prompt analysis, the system can log detailed LLM traces when `debug.llm_trace.enabled` is set to `true` in `config/config.yaml`.
+For production debugging and prompt analysis, the system can log detailed LLM traces when `debug.llm_trace.enabled` is set to `true` in `config/config.yaml`. In production (e.g., GCP jobs), you can route traces to Google Cloud Storage when local disk usage should be minimized.
 
 ### Configuration
 
@@ -673,6 +673,8 @@ debug:
     include_token_stats: true
     include_response: true
     file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"
+    # When running with enable_debug_mode: false, traces are written to this GCS URI if set
+    remote_output_uri: "gs://my-bucket/path/to/llm_traces"
 ```
 
 ### Usage
@@ -684,7 +686,11 @@ python src/main.py --contact-id "CNT-ABC123"
 
 ### Output
 
-Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.md` and include:
+When `enable_debug_mode: true`, traces are written locally to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.md`.
+
+When `enable_debug_mode: false` and `remote_output_uri` is set to a GCS URI (e.g., `gs://my-bucket/llm_traces`), traces are written to that bucket path instead. Ensure your environment has GCP credentials (e.g., Workload Identity or `GOOGLE_APPLICATION_CREDENTIALS`) and install `google-cloud-storage`.
+
+All traces include:
 
 - **Request sections**: Full rendered system prompt per ENI group (includes `structured_insight.md` template with all variables substituted)
 - **Token Stats**: Detailed token breakdown including:

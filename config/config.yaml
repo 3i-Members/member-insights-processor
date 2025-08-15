@@ -301,8 +301,11 @@ debug:
   enable_debug_mode: true
   llm_trace:
     enabled: true
-    output_dir: "logs/llm_traces"
+    output_dir: "logs/llm_traces"  # Local default; when 'remote_output_uri' is set and enable_debug_mode is false, traces go to GCS
     include_rendered_prompts: true
     include_token_stats: true
     include_response: true
     file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"
+    # Optional remote destination for production runs
+    # Set to a GCS URI like gs://my-bucket/path/to/llm_traces
+    remote_output_uri: "gs://<your-bucket>/llm_traces"
