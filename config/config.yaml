@@ -6,6 +6,12 @@ bigquery:
   dataset_id: "3i_analytics"  # Matches existing codebase
   table_name: "eni_vectorizer__all"  # Matches existing codebase
 
+  # Processing log table in operational warehouse (Elvis)
+  processing_log:
+    project_id: "i-sales-analytics"
+    dataset_id: "elvis"
+    table_name: "eni_processing_log"
+
 # Supabase Configuration
 supabase:
   # Note: Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as environment variables for security
@@ -235,6 +241,19 @@ processing:
   context_window_tokens: 400000           # Total tokens available for prompt
   reserve_output_tokens: 8000             # Reserve for model output generation
   max_new_data_tokens_per_group: 12000    # Cap per ENI group for new data rows
+
+  # ENI Record Processing Settings (batch mode is disabled by default)
+  eni_processing:
+    enable_batch_mode: false
+    batch_size: 5              # Number of ENI records to process per AI call
+    max_batch_size: 15         # Hard cap for safety
+    min_batch_size: 1          # Allow single-record processing
+    estimated_tokens_per_eni: 500
+    max_total_tokens_per_call: 15000
+    group_by_eni_type: true
+    prioritize_recent_data: true
+    clear_batch_after_processing: true
+    enable_progress_checkpointing: true
   
   # Supabase integration settings
   enable_supabase_storage: true
