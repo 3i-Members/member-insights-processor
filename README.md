@@ -715,6 +715,46 @@ All traces include:
 - Analyze LLM response quality
 - Troubleshoot template rendering
 
+### GCS Verification Script
+
+We include a small script to independently verify GCS write/read access:
+
+```bash
+# From repo root
+PYTHONPATH="member-insights-processor/src" \
+python member-insights-processor/tests/test_gcs_trace_write.py --config member-insights-processor/config/config.yaml
+
+# Or run from inside member-insights-processor
+PYTHONPATH="src" python tests/test_gcs_trace_write.py --config config/config.yaml
+
+# You can also pass an explicit URI
+PYTHONPATH="src" python tests/test_gcs_trace_write.py --gcs-uri gs://<bucket>/llm_traces/
+```
+
+Successful output shows both the upload and a byte-for-byte readback validation.
+
+### GCS Trace Routing Behavior
+
+- When `debug.enable_debug_mode: true` and `llm_trace.enabled: true` → traces write to local `debug.llm_trace.output_dir`.
+- When `debug.enable_debug_mode: false` and `debug.llm_trace.remote_output_uri` is set to a `gs://` path → traces write to GCS.
+- The same sections are written in both cases (request, token stats, response) controlled by `include_*` flags.
+- Additional logging is emitted when using GCS, for example:
+  - `[LLMTraceWriter] Using GCS for traces: bucket=..., prefix=...`
+  - `[LLMTraceWriter] Created new GCS trace file: gs://.../llm_trace_<CONTACT>_<TS>.md`
+  - `[LLMTraceWriter] Appended section to GCS trace: gs://... (bytes=...)`
+
+### GCS Troubleshooting
+
+- 403 permissions when writing:
+  - Grant the workload/service account `Storage Object Creator` (or `Storage Admin`) on the bucket
+  - Confirm uniform bucket-level access is configured as expected
+- Local folder `gs:` appears:
+  - Ensure `output_dir` is not treated as a local path and starts with `gs://`
+  - Upgraded logic avoids coercing `gs://` to `Path`; verify you are on the latest branch version
+- Verify credentials:
+  - `gcloud auth application-default login` for local dev, or set `GOOGLE_APPLICATION_CREDENTIALS`
+  - For GCP jobs, ensure Workload Identity / service account binding is correct
+
 ## OpenAI Configuration Notes
 
 - Env var fallback supported: `OPENAI_API_KEY` or `OPEN_AI_KEY`
