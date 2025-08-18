@@ -247,6 +247,45 @@ class ConfigLoader:
         except Exception as e:
             logger.error(f"Error getting processing configuration: {str(e)}")
             return {}
+
+    def get_eni_processing_config(self) -> Dict[str, Any]:
+        """Get ENI processing configuration with defaults."""
+        try:
+            processing_config = self.config_data.get('processing', {}) or {}
+            eni_config = processing_config.get('eni_processing', {}) or {}
+            defaults = {
+                'enable_batch_mode': False,
+                'batch_size': 5,
+                'max_batch_size': 15,
+                'min_batch_size': 1,
+                'estimated_tokens_per_eni': 500,
+                'max_total_tokens_per_call': 15000,
+                'group_by_eni_type': True,
+                'prioritize_recent_data': True,
+                'clear_batch_after_processing': True,
+                'enable_progress_checkpointing': True,
+            }
+            merged = {**defaults, **eni_config}
+            # Guardrails
+            if merged['batch_size'] < merged['min_batch_size']:
+                merged['batch_size'] = merged['min_batch_size']
+            if merged['batch_size'] > merged['max_batch_size']:
+                merged['batch_size'] = merged['max_batch_size']
+            return merged
+        except Exception as e:
+            logger.error(f"Error getting ENI processing configuration: {str(e)}")
+            return {
+                'enable_batch_mode': False,
+                'batch_size': 5,
+                'max_batch_size': 15,
+                'min_batch_size': 1,
+                'estimated_tokens_per_eni': 500,
+                'max_total_tokens_per_call': 15000,
+                'group_by_eni_type': True,
+                'prioritize_recent_data': True,
+                'clear_batch_after_processing': True,
+                'enable_progress_checkpointing': True,
+            }
     
     def get_gemini_config(self) -> Dict[str, Any]:
         """

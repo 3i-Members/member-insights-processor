@@ -47,6 +47,7 @@ from utils.enhanced_logger import create_enhanced_logger
 from utils.token_utils import estimate_tokens
 from output_management.markdown_writer import LLMTraceWriter
 from output_management.supabase_airtable_writer import SupabaseAirtableSync
+from data_processing.eni_batch_processor import ENIBatchProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -306,11 +307,120 @@ class MemberInsightsProcessor:
             
             logger.info(f"Setup validation complete: {len(report['issues'])} issues, {len(report['warnings'])} warnings")
             return report
-            
         except Exception as e:
             report['valid'] = False
             report['issues'].append(f"Validation error: {str(e)}")
             return report
+
+    def _process_structured_insight_batches(
+        self,
+        contact_id: str,
+        system_prompt_key: str,
+        dry_run: bool,
+    ) -> Dict[str, Any]:
+        """Process ENI records in configurable batches."""
+        result = {
+            'contact_id': contact_id,
+            'success': False,
+            'processed_batches': 0,
+            'total_eni_ids': 0,
+            'processed_eni_ids': [],
+            'errors': []
+        }
+
+        try:
+            # Ensure BQ connection
+            if not self.bigquery_connector.connect():
+                result['errors'].append("Failed to connect to BigQuery")
+                return result
+
+            batch_processor = ENIBatchProcessor(self.config_loader, self.bigquery_connector, self.log_manager)
+
+            consolidated_eni_id = f"COMBINED-{contact_id}-ALL"
+
+            # JSON summary for Context 1
+            existing_summary_json = None
+            try:
+                if hasattr(self.context_manager, 'get_current_structured_insight_json'):
+                    existing_summary_json = self.context_manager.get_current_structured_insight_json(
+                        contact_id=contact_id,
+                        system_prompt_key=system_prompt_key,
+                    )
+            except Exception:
+                existing_summary_json = None
+
+            while True:
+                batch_df = batch_processor.get_next_eni_batch(contact_id)
+                if batch_df.empty:
+                    break
+
+                if not batch_processor.should_process_batch(batch_df):
+                    min_size = self.config_loader.get_eni_processing_config().get('min_batch_size', 1)
+                    batch_df = batch_df.head(int(min_size))
+
+                # Render prompt for batch
+                rendered_prompt, token_stats = self.context_manager.render_structured_prompt_from_dataframe(
+                    contact_id=contact_id,
+                    df=batch_df,
+                    existing_summary_json=existing_summary_json,
+                    system_prompt_key=system_prompt_key,
+                )
+
+                # LLM call
+                start_time = time.time()
+                ai_response = self.ai_processor.generate_structured_insight(rendered_prompt)
+                ai_duration = time.time() - start_time
+
+                # Persist JSON
+                insights, _ = self.json_writer.write_structured_insight(
+                    contact_id=contact_id,
+                    eni_id=consolidated_eni_id,
+                    eni_source_type="BATCH",
+                    eni_source_subtype="ALL",
+                    data=ai_response,
+                )
+
+                # Upsert Supabase
+                if self.supabase_processor and not dry_run:
+                    self.supabase_processor.create_or_update_structured_insight(
+                        contact_id=contact_id,
+                        consolidated_eni_id=consolidated_eni_id,
+                        eni_source_types=["BATCH"],
+                        eni_source_subtypes=["ALL"],
+                        insights_json=insights,
+                        context_files="batch/BATCH-ALL",
+                        record_count=len(batch_df),
+                        total_eni_ids=len(batch_df),
+                        token_stats=token_stats,
+                        generation_time_seconds=ai_duration,
+                    )
+
+                # Mark processed in BQ log
+                if not dry_run:
+                    records = batch_df[['eni_id', 'contact_id']].to_dict('records')
+                    self.bigquery_connector.batch_mark_processed([
+                        {
+                            'eni_id': r['eni_id'],
+                            'contact_id': r['contact_id'],
+                            'processing_status': 'completed',
+                            'processor_version': '2.0.0',
+                            'processing_duration_ms': int(ai_duration * 1000),
+                            'metadata': {'batch_id': f"batch-{contact_id}-{int(time.time())}"},
+                        }
+                        for r in records
+                    ])
+
+                existing_summary_json = insights
+                result['processed_batches'] += 1
+                result['total_eni_ids'] += len(batch_df)
+                result['processed_eni_ids'].extend(batch_df['eni_id'].tolist())
+
+            result['success'] = True
+            return result
+        except Exception as e:
+            logger.exception("Batch processing failed")
+            result['errors'].append(str(e))
+            return result
     
     def process_contact(
         self,
@@ -353,11 +463,21 @@ class MemberInsightsProcessor:
             # Optional LLM trace setup
             debug_cfg = self.context_manager.config_data.get('debug', {}) or {}
             llm_trace_cfg = (debug_cfg.get('llm_trace') or {}) if debug_cfg else {}
-            llm_trace_enabled = bool(llm_trace_cfg.get('enabled'))
+            enable_debug_mode = bool(debug_cfg.get('enable_debug_mode'))
+            # Enable tracing if configured OR when remote_output_uri is set and debug mode is disabled
+            llm_trace_enabled = bool(llm_trace_cfg.get('enabled')) or (
+                (not enable_debug_mode) and bool(llm_trace_cfg.get('remote_output_uri'))
+            )
             trace_file_path = None
             trace_writer = None
             if llm_trace_enabled:
-                trace_writer = LLMTraceWriter(llm_trace_cfg.get('output_dir', 'logs/llm_traces'))
+                # Choose destination: when debug mode is disabled and remote_output_uri is provided, write to GCS
+                output_dir = (
+                    llm_trace_cfg.get('remote_output_uri')
+                    if (not enable_debug_mode and llm_trace_cfg.get('remote_output_uri'))
+                    else llm_trace_cfg.get('output_dir', 'logs/llm_traces')
+                )
+                trace_writer = LLMTraceWriter(output_dir)
                 trace_file_path = trace_writer.start_trace(
                     contact_id,
                     llm_trace_cfg.get('file_naming_pattern', 'llm_trace_{contact_id}_{timestamp}.md')
@@ -378,6 +498,18 @@ class MemberInsightsProcessor:
                 result['success'] = True
                 return result
             
+            # Before grouping processing, optionally switch to batch mode
+            eni_batch_cfg = self.config_loader.get_eni_processing_config()
+            if bool(eni_batch_cfg.get('enable_batch_mode')):
+                logger.info(
+                    f"Batch mode enabled for {contact_id} (batch_size={eni_batch_cfg.get('batch_size')}, max_total={eni_batch_cfg.get('max_total_tokens_per_call')})"
+                )
+                return self._process_structured_insight_batches(
+                    contact_id=contact_id,
+                    system_prompt_key=system_prompt_key,
+                    dry_run=dry_run,
+                )
+
             # Get ENI type/subtype combinations to process
             # NOTE: This will ALWAYS include NULL subtypes first, then any explicitly defined subtypes
             eni_combinations = self.bigquery_connector.get_eni_combinations_for_processing(processing_rules)

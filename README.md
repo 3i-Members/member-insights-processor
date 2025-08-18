@@ -659,7 +659,7 @@ This generates `logs/context_preview_{CONTACT_ID}_{TIMESTAMP}.md` with:
 
 ## Debug LLM Tracing (New)
 
-For production debugging and prompt analysis, the system can log detailed LLM traces when `debug.llm_trace.enabled` is set to `true` in `config/config.yaml`.
+For production debugging and prompt analysis, the system can log detailed LLM traces when `debug.llm_trace.enabled` is set to `true` in `config/config.yaml`. In production (e.g., GCP jobs), you can route traces to Google Cloud Storage when local disk usage should be minimized.
 
 ### Configuration
 
@@ -673,6 +673,8 @@ debug:
     include_token_stats: true
     include_response: true
     file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"
+    # When running with enable_debug_mode: false, traces are written to this GCS URI if set
+    remote_output_uri: "gs://my-bucket/path/to/llm_traces"
 ```
 
 ### Usage
@@ -684,7 +686,11 @@ python src/main.py --contact-id "CNT-ABC123"
 
 ### Output
 
-Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.md` and include:
+When `enable_debug_mode: true`, traces are written locally to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.md`.
+
+When `enable_debug_mode: false` and `remote_output_uri` is set to a GCS URI (e.g., `gs://my-bucket/llm_traces`), traces are written to that bucket path instead. Ensure your environment has GCP credentials (e.g., Workload Identity or `GOOGLE_APPLICATION_CREDENTIALS`) and install `google-cloud-storage`.
+
+All traces include:
 
 - **Request sections**: Full rendered system prompt per ENI group (includes `structured_insight.md` template with all variables substituted)
 - **Token Stats**: Detailed token breakdown including:
@@ -708,6 +714,46 @@ Debug traces are written to `logs/llm_traces/llm_trace_{CONTACT_ID}_{TIMESTAMP}.
 - Monitor token usage patterns
 - Analyze LLM response quality
 - Troubleshoot template rendering
+
+### GCS Verification Script
+
+We include a small script to independently verify GCS write/read access:
+
+```bash
+# From repo root
+PYTHONPATH="member-insights-processor/src" \
+python member-insights-processor/tests/test_gcs_trace_write.py --config member-insights-processor/config/config.yaml
+
+# Or run from inside member-insights-processor
+PYTHONPATH="src" python tests/test_gcs_trace_write.py --config config/config.yaml
+
+# You can also pass an explicit URI
+PYTHONPATH="src" python tests/test_gcs_trace_write.py --gcs-uri gs://<bucket>/llm_traces/
+```
+
+Successful output shows both the upload and a byte-for-byte readback validation.
+
+### GCS Trace Routing Behavior
+
+- When `debug.enable_debug_mode: true` and `llm_trace.enabled: true` → traces write to local `debug.llm_trace.output_dir`.
+- When `debug.enable_debug_mode: false` and `debug.llm_trace.remote_output_uri` is set to a `gs://` path → traces write to GCS.
+- The same sections are written in both cases (request, token stats, response) controlled by `include_*` flags.
+- Additional logging is emitted when using GCS, for example:
+  - `[LLMTraceWriter] Using GCS for traces: bucket=..., prefix=...`
+  - `[LLMTraceWriter] Created new GCS trace file: gs://.../llm_trace_<CONTACT>_<TS>.md`
+  - `[LLMTraceWriter] Appended section to GCS trace: gs://... (bytes=...)`
+
+### GCS Troubleshooting
+
+- 403 permissions when writing:
+  - Grant the workload/service account `Storage Object Creator` (or `Storage Admin`) on the bucket
+  - Confirm uniform bucket-level access is configured as expected
+- Local folder `gs:` appears:
+  - Ensure `output_dir` is not treated as a local path and starts with `gs://`
+  - Upgraded logic avoids coercing `gs://` to `Path`; verify you are on the latest branch version
+- Verify credentials:
+  - `gcloud auth application-default login` for local dev, or set `GOOGLE_APPLICATION_CREDENTIALS`
+  - For GCP jobs, ensure Workload Identity / service account binding is correct
 
 ## OpenAI Configuration Notes
 
