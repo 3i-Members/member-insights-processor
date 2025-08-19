@@ -152,6 +152,97 @@ python src/main.py --limit 10
 python src/main.py --limit 5 --dry-run
 ```
 
+### Parallel Processing & Dispatcher (New)
+
+You can safely process many contacts concurrently with built‑in idempotency and observability.
+
+```bash
+# 10 contacts in parallel, batch up to 400 contacts total
+PYTHONPATH=src python -m src.main \
+  --parallel \
+  --max-concurrent-contacts 10 \
+  --limit 400 \
+  --system-prompt structured_insight
+```
+
+- Flags:
+  - `--parallel`: enables the contact-level dispatcher
+  - `--max-concurrent-contacts`: cap parallel contacts in flight
+  - `--limit`: total contacts to schedule this run
+  - `--selection-batch-size`: per-wave fetch size for scheduling
+  - `--contacts-sql` / `--contacts-sql-inline`: optional SQL to drive contact selection
+
+- Selection cutoff: contacts processed within the last week are skipped by default. The dispatcher substitutes `{{job_start_time}}` as (UTC now − 7 days) in SQL selection.
+
+#### Observability & Artifacts (New)
+
+During a parallel run, structured artifacts are created under `logs/runs/{run_id}`:
+
+- `summary.ndjson`: live event stream (schedule waves, claim acquire/release, contact start/complete)
+- `summary.json`: final roll‑up (totals, successes/failures, token stats)
+- `contacts/{contact_id}.json`: per‑contact outcome (counts, timings, Airtable record IDs)
+
+Tail live events:
+```bash
+tail -f logs/runs/<run_id>/summary.ndjson
+```
+
+#### Duplicate Safety (Idempotency)
+
+- Local single‑machine safety via claim files: `logs/claims/contact/<contact_id>.lock`
+- Warehouse‑level safety via BigQuery processing log (`elvis.eni_processing_log`):
+  - We now write `processor_system_prompt_key` and `processor_generator` for each processed ENI.
+  - SQL selectors exclude contacts with `last_processed_time >= cutoff` for this processor.
+
+#### Prioritized Selection (New)
+
+When no custom SQL is provided, the dispatcher uses a prioritized selector that:
+
+1) Picks contacts never processed for `processor_system_prompt_key='structured_insight'` and `processor_generator='structured_insight'`
+2) Then oldest `last_processed_time` ascending
+3) Excludes any with `last_processed_time >= (now − 7 days)`
+
+You can also provide your own SQL using supported variables:
+
+```sql
+-- Supported variables: {{system_prompt}}, {{generator}}, {{job_start_time}}
+WITH last_processed AS (
+  SELECT contact_id, MAX(processed_at) AS last_processed_time
+  FROM `i-sales-analytics.elvis.eni_processing_log`
+  WHERE processor_system_prompt_key = {{system_prompt}}
+    AND processor_generator = {{generator}}
+  GROUP BY contact_id
+), all_contacts AS (
+  SELECT ev.contact_id, COUNT(ev.eni_id) AS record_cnt
+  FROM `i-sales-analytics.3i_analytics.eni_vectorizer__all` ev
+  GROUP BY ev.contact_id
+)
+SELECT ac.contact_id, ac.record_cnt, lp.last_processed_time
+FROM all_contacts ac
+LEFT JOIN last_processed lp USING(contact_id)
+WHERE (
+  lp.last_processed_time IS NULL OR
+  lp.last_processed_time < TIMESTAMP({{job_start_time}})
+)
+ORDER BY (lp.last_processed_time IS NOT NULL), lp.last_processed_time ASC, ac.record_cnt ASC
+```
+
+### OpenAI Concurrency & Rate Limits (New)
+
+The OpenAI processor uses a global concurrency gate controlled by `OPENAI_MAX_CONCURRENT`:
+
+```bash
+# Example: allow up to 10 concurrent OpenAI calls
+export OPENAI_MAX_CONCURRENT=10
+
+# Run with parallel contacts
+PYTHONPATH=src OPENAI_MAX_CONCURRENT=10 \
+  python -m src.main --parallel --max-concurrent-contacts 10 --limit 400
+```
+
+- Typical sizing: start with 3–5 and increase while monitoring 429s and latency. Tier‑based RPM/TPM may constrain maximum effective concurrency per model.
+- The processor implements exponential backoff with jitter and respects Retry‑After where available.
+
 ### 4. Check Processing Statistics
 ```bash
 python src/main.py --stats
@@ -539,6 +630,14 @@ python scripts/run_processing_filters_test.py CNT-HvA002554
 # Run specific test module
 pytest tests/test_bigquery_connector.py
 ```
+
+See an extensive overview in `tests/README.md`:
+
+- Dispatcher concurrency/offset tests
+- SQL‑driven selection tests
+- Smoke tests and integration checks (Supabase, Airtable)
+- GCS trace write/read validation
+- How to run with or without live cloud dependencies
 
 ## Context Manager and Token Budgeting (New)
 

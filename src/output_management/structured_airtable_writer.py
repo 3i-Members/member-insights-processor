@@ -277,8 +277,9 @@ class StructuredInsightsAirtableWriter:
             
             # Create the record
             created_record = self.note_submission_table.create(record_data)
-            
-            logger.info(f"Created note submission record for {contact_id} ({member_name}): {created_record['id']}")
+            logger.info(
+                f"Airtable note_submission create success for {contact_id} ({member_name}): record_id={created_record['id']} master_id={master_record_id}"
+            )
             
             return StructuredSyncResult(
                 success=True,

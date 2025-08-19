@@ -17,7 +17,9 @@ anthropic>=0.18.0
 
 # Database Integration
 supabase>=2.0.0
-postgrest-py>=0.13.0
+# Use the correct PyPI package name and available versions
+postgrest>=0.10.6
+websockets>=13.0
 
 # Airtable Integration
 pyairtable>=2.1.0
@@ -61,3 +63,6 @@ tqdm>=4.65.0
 # Data Validation
 pydantic>=2.0.0
 jsonschema>=4.17.0 
+
+# Google Cloud Storage
+google-cloud-storage>=2.16.0

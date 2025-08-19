@@ -397,3 +397,32 @@ def create_insight_from_ai_response(
         metadata=insight_metadata,
         insights=insights_content
     ) 
+
+
+def validate_structured_insight_json(data: Dict[str, Any]) -> bool:
+    """
+    Basic validation for structured insight JSON payloads.
+
+    This is a lightweight validator intended for tests and ingestion guardrails.
+    Requirements:
+    - metadata.contact_id must exist and match expected format
+    - insights must be present and be a dict (can be empty)
+    - eni_id may be present (optional)
+    """
+    try:
+        if not isinstance(data, dict):
+            return False
+        metadata = data.get('metadata')
+        if not isinstance(metadata, dict):
+            return False
+        contact_id = metadata.get('contact_id')
+        if not is_valid_contact_id(contact_id):
+            return False
+        insights = data.get('insights')
+        if insights is None or not isinstance(insights, dict):
+            return False
+        # Optionally validate eni_id if present
+        # eni_id = metadata.get('eni_id')  # free-form, not strictly validated here
+        return True
+    except Exception:
+        return False

@@ -1,3 +1,101 @@
+# Tests for Member Insights Processor
+
+This test suite covers the parallel dispatcher, SQL‑driven selection, context building, output writers, and cloud integrations.
+
+## Structure
+
+```
+tests/
+├── cli/
+│   └── test_flags_and_config.py             # CLI flags wiring and config behavior
+├── dispatcher/
+│   ├── test_dispatcher_loop.py              # Parallel scheduling loop invariants
+│   └── test_offset_behavior.py              # Offset/limit paging across waves
+├── observability/
+│   └── test_logging.py                      # Logger and run summary events
+├── smoke/
+│   └── test_end_to_end_smoke.py             # Minimal end‑to‑end run
+├── sql_selection/
+│   ├── test_filters.py                      # Selection filters
+│   ├── test_membership_join.py              # Joins to member dimension
+│   ├── test_remaining_work.py               # Excludes already processed
+│   └── test_edge_cases.py                   # Empty/NULL cases
+├── utils/
+│   └── test_local_file_claimer.py           # Duplicate‑safety claims
+├── test_airtable_sync.py
+├── test_api_connections.py
+├── test_components.py
+├── test_context_preview.py
+├── test_gcs_trace_write.py
+├── test_main_integration.py
+├── test_null_handling.py
+├── test_processing_filters.py
+├── test_runner.py
+├── test_single_contact.py
+├── test_structured_insights.py
+├── test_supabase_integration.py
+├── test_supabase_setup.py
+├── test_supabase_upload.py
+└── test_with_env.py
+```
+
+## Running tests
+
+```bash
+# From member-insights-processor/
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+pytest -q
+```
+
+With coverage:
+
+```bash
+pytest --cov=src --cov-report=term-missing
+```
+
+## Required environment
+
+Minimal variables (use `.env` or export):
+
+```env
+OPENAI_API_KEY=sk-...
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+```
+
+Optional tuning:
+
+```env
+OPENAI_MAX_CONCURRENT=5
+```
+
+## Live vs mocked
+
+- Most unit tests mock cloud services.
+- Integration tests require live credentials; they will be skipped if env vars are missing.
+
+## Notable tests
+
+- Dispatcher caps concurrency and avoids duplicates across waves.
+- Prioritized selection returns never‑processed first, then oldest; respects 1‑week cutoff.
+- RunSummaryWriter emits live events and final roll‑ups; per‑contact JSON is written.
+- GCS trace writer appends sections and validates round‑trip.
+
+## Tips
+
+- To debug a single test:
+```bash
+pytest -k test_dispatcher_loop -q -s
+```
+
+- To print logs during tests:
+```bash
+pytest -o log_cli=true -o log_cli_level=INFO -s
+```
+
 # Member Insights Processor Test Suite
 
 This directory contains comprehensive tests for the Member Insights Processor system.

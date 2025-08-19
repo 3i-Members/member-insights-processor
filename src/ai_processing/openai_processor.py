@@ -12,6 +12,9 @@ import json
 from typing import Dict, List, Optional, Any
 import pandas as pd
 from openai import OpenAI
+import openai as openai_pkg
+import threading
+import random
 from utils.token_utils import estimate_tokens
 
 logger = logging.getLogger(__name__)
@@ -35,6 +38,14 @@ class OpenAIProcessor:
         self.generation_config = generation_config or {}
         self.client = None
         self._configure_openai()
+        # Global concurrency/rate limiting primitives
+        max_concurrent = int(os.getenv('OPENAI_MAX_CONCURRENT', '3'))
+        if not hasattr(OpenAIProcessor, '_global_semaphore'):
+            OpenAIProcessor._global_semaphore = threading.BoundedSemaphore(max_concurrent)
+        if not hasattr(OpenAIProcessor, '_global_resume_after_ts'):
+            OpenAIProcessor._global_resume_after_ts = 0.0
+        if not hasattr(OpenAIProcessor, '_rate_limit_lock'):
+            OpenAIProcessor._rate_limit_lock = threading.Lock()
 
     def _configure_openai(self) -> None:
         """Configure the OpenAI client."""
@@ -166,6 +177,10 @@ class OpenAIProcessor:
             for attempt in range(max_retries):
                 try:
                     logger.debug(f"Generating insights with OpenAI (attempt {attempt + 1})")
+                    # Respect any global resume-after deadline
+                    self._respect_global_resume_delay()
+                    # Concurrency gate
+                    OpenAIProcessor._global_semaphore.acquire()
                     
                     # Prepare generation parameters
                     generation_params = {
@@ -218,14 +233,49 @@ class OpenAIProcessor:
                     
                 except Exception as e:
                     logger.warning(f"OpenAI generation failed (attempt {attempt + 1}): {str(e)}")
+                    # Determine status and Retry-After
+                    delay = None
+                    status_code = None
+                    retry_after_hdr = None
+                    try:
+                        if isinstance(e, openai_pkg.APIStatusError):
+                            status_code = getattr(e, 'status_code', None)
+                            retry_after_hdr = e.response.headers.get('retry-after') if getattr(e, 'response', None) else None
+                        elif hasattr(e, 'response') and getattr(e.response, 'status_code', None):
+                            status_code = e.response.status_code
+                            retry_after_hdr = e.response.headers.get('retry-after')
+                    except Exception:
+                        pass
+
+                    if status_code == 429 or ("429" in str(e)):
+                        # Honor Retry-After if present; fallback to expo + jitter
+                        try:
+                            if retry_after_hdr:
+                                delay = max(1.0, float(retry_after_hdr))
+                        except Exception:
+                            delay = None
+                        if delay is None:
+                            delay = (2 ** attempt) + random.uniform(0, 1)
+                        # Set global resume-after
+                        with OpenAIProcessor._rate_limit_lock:
+                            OpenAIProcessor._global_resume_after_ts = max(
+                                OpenAIProcessor._global_resume_after_ts,
+                                time.time() + float(delay)
+                            )
+                    else:
+                        delay = (2 ** attempt) + random.uniform(0, 1)
+
                     if attempt < max_retries - 1:
-                        # Exponential backoff
-                        delay = 2 ** attempt
-                        logger.debug(f"Retrying in {delay} seconds...")
+                        logger.debug(f"Retrying in {delay:.2f}s (status={status_code})")
                         time.sleep(delay)
                     else:
                         logger.error("Failed to generate insights after all attempts")
                         return None
+                finally:
+                    try:
+                        OpenAIProcessor._global_semaphore.release()
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.error(f"Error in generate_insights: {str(e)}")
@@ -253,6 +303,10 @@ class OpenAIProcessor:
             for attempt in range(max_retries):
                 try:
                     logger.debug(f"Generating from full prompt (attempt {attempt + 1})")
+                    # Respect any global resume-after
+                    self._respect_global_resume_delay()
+                    # Concurrency gate
+                    OpenAIProcessor._global_semaphore.acquire()
 
                     generation_params = {
                         'model': self.model_name,
@@ -295,13 +349,45 @@ class OpenAIProcessor:
 
                 except Exception as e:
                     logger.warning(f"OpenAI generation failed (attempt {attempt + 1}): {str(e)}")
+                    delay = None
+                    status_code = None
+                    retry_after_hdr = None
+                    try:
+                        if isinstance(e, openai_pkg.APIStatusError):
+                            status_code = getattr(e, 'status_code', None)
+                            retry_after_hdr = e.response.headers.get('retry-after') if getattr(e, 'response', None) else None
+                        elif hasattr(e, 'response') and getattr(e, 'response', None) and getattr(e.response, 'status_code', None):
+                            status_code = e.response.status_code
+                            retry_after_hdr = e.response.headers.get('retry-after')
+                    except Exception:
+                        pass
+                    if status_code == 429 or ("429" in str(e)):
+                        try:
+                            if retry_after_hdr:
+                                delay = max(1.0, float(retry_after_hdr))
+                        except Exception:
+                            delay = None
+                        if delay is None:
+                            delay = (2 ** attempt) + random.uniform(0, 1)
+                        with OpenAIProcessor._rate_limit_lock:
+                            OpenAIProcessor._global_resume_after_ts = max(
+                                OpenAIProcessor._global_resume_after_ts,
+                                time.time() + float(delay)
+                            )
+                    else:
+                        delay = (2 ** attempt) + random.uniform(0, 1)
+
                     if attempt < max_retries - 1:
-                        delay = 2 ** attempt
-                        logger.debug(f"Retrying in {delay} seconds...")
+                        logger.debug(f"Retrying in {delay:.2f}s (status={status_code})")
                         time.sleep(delay)
                     else:
                         logger.error("Failed to generate after all attempts")
                         return None
+                finally:
+                    try:
+                        OpenAIProcessor._global_semaphore.release()
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.error(f"Error in generate_from_full_prompt: {str(e)}")
@@ -352,7 +438,8 @@ class OpenAIProcessor:
                 system_prompt=system_prompt,
                 context_content=context_content,
                 member_data=contact_data,
-                additional_context=additional_context
+                additional_context=additional_context,
+                max_retries=self.generation_config.get('max_retries', 5)
             )
 
             return insights
@@ -431,3 +518,41 @@ def create_openai_processor(
         model_name=configured_model,
         generation_config=generation_config
     ) 
+
+# -------- Internal helpers --------
+def _now_ts() -> float:
+    try:
+        return time.time()
+    except Exception:
+        return 0.0
+
+def _sleep_safe(seconds: float) -> None:
+    try:
+        time.sleep(max(0.0, float(seconds)))
+    except Exception:
+        pass
+
+def _get_global_resume_after_ts() -> float:
+    try:
+        return getattr(OpenAIProcessor, '_global_resume_after_ts', 0.0)
+    except Exception:
+        return 0.0
+
+def _set_global_resume_after_ts(ts: float) -> None:
+    try:
+        with getattr(OpenAIProcessor, '_rate_limit_lock'):
+            OpenAIProcessor._global_resume_after_ts = max(getattr(OpenAIProcessor, '_global_resume_after_ts', 0.0), ts)
+    except Exception:
+        pass
+
+def _respect_global_resume_delay_instance() -> None:
+    try:
+        ts = _get_global_resume_after_ts()
+        now = _now_ts()
+        if ts > now:
+            _sleep_safe(min(ts - now, 10.0))
+    except Exception:
+        pass
+
+# Bind helper as instance method to avoid refactor across class
+OpenAIProcessor._respect_global_resume_delay = staticmethod(_respect_global_resume_delay_instance)

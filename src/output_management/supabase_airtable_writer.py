@@ -100,18 +100,22 @@ class SupabaseAirtableSync:
             
             if sync_res and getattr(sync_res, 'success', False):
                 action = "created" if getattr(sync_res, 'created', False) else ("updated" if getattr(sync_res, 'updated', False) else "created")
+                record_id = getattr(sync_res, 'record_id', None)
+                logger.info(f"Airtable sync success for {contact_id}: action={action} record_id={record_id}")
                 return SyncResult(
                     contact_id=contact_id,
                     success=True,
                     action=action,
-                    airtable_record_id=getattr(sync_res, 'record_id', None)
+                    airtable_record_id=record_id
                 )
             else:
+                error_detail = getattr(sync_res, 'error', "Failed to create/update Airtable record") if sync_res else "No response from Airtable writer"
+                logger.error(f"Airtable sync failed for {contact_id}: {error_detail}")
                 return SyncResult(
                     contact_id=contact_id,
                     success=False,
                     action="failed",
-                    error_message=getattr(sync_res, 'error', "Failed to create/update Airtable record")
+                    error_message=error_detail
                 )
                 
         except Exception as e:

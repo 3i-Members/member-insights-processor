@@ -363,6 +363,23 @@ class EnhancedLogger:
         self.metrics.log_file_created()
         self.logger.info(f"📁 Created {file_type} file: {file_path}")
         
+    def log_claim_event(self, contact_id: str, event: str, key: str = ""):
+        """Log local-claim lifecycle events (attempt, acquired, released, skipped)."""
+        key_str = f" key={key}" if key else ""
+        self.logger.info(f"🔒 CLAIM {event} for {contact_id}{key_str}")
+
+    def log_dispatcher_wave(self, in_flight: int, capacity: int, offset: int, fetch_limit: int, scheduled_count: int):
+        """Log a scheduling wave in the dispatcher."""
+        self.logger.info(
+            f"📡 WAVE in_flight={in_flight} capacity={capacity} offset={offset} fetch_limit={fetch_limit} scheduled={scheduled_count}"
+        )
+
+    def log_run_banner(self, run_id: str, workers: int, batch_size: int, selection_mode: str, start_iso: str):
+        """Print a run banner with core parameters."""
+        self.logger.info(
+            f"RUN {run_id} | workers={workers} batch_size={batch_size} selection={selection_mode} start={start_iso}"
+        )
+        
     def get_final_report(self) -> Dict[str, Any]:
         """Generate final processing report"""
         metrics = self.metrics.get_current_metrics()

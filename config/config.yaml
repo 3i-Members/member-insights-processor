@@ -254,6 +254,24 @@ processing:
     prioritize_recent_data: true
     clear_batch_after_processing: true
     enable_progress_checkpointing: true
+
+  # Parallel processing settings
+  parallel:
+    enable: false                  # Enable contact-level parallelization
+    max_concurrent_contacts: 4     # Max concurrent contacts to process
+
+    # SQL-driven contact selection
+    selection:
+      sql_file: null               # Path to SQL that selects prioritized contact_ids
+      batch_size: 100              # Query batch size (fetch_limit per wave)
+
+    # Local-only claims (duplicate safety on a single machine)
+    claims:
+      enabled: true
+      ttl_seconds: 900
+      backoff_seconds:
+        min: 1
+        max: 5
   
   # Supabase integration settings
   enable_supabase_storage: true
@@ -298,7 +316,7 @@ features:
 
 
 debug:
-  enable_debug_mode: true
+  enable_debug_mode: false
   llm_trace:
     enabled: true
     output_dir: "logs/llm_traces"  # Local default; when 'remote_output_uri' is set and enable_debug_mode is false, traces go to GCS
@@ -308,4 +326,4 @@ debug:
     file_naming_pattern: "llm_trace_{contact_id}_{timestamp}.md"
     # Optional remote destination for production runs
     # Set to a GCS URI like gs://my-bucket/path/to/llm_traces
-    remote_output_uri: "gs://<your-bucket>/llm_traces"
+    remote_output_uri: "gs://eni_storage_bucket/llm_traces/"

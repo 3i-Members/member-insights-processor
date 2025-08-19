@@ -286,6 +286,63 @@ class ConfigLoader:
                 'clear_batch_after_processing': True,
                 'enable_progress_checkpointing': True,
             }
+
+    def get_parallel_config(self) -> Dict[str, Any]:
+        """Get parallel processing configuration with defaults and guardrails."""
+        try:
+            processing_config = self.config_data.get('processing', {}) or {}
+            parallel_cfg = processing_config.get('parallel', {}) or {}
+            defaults = {
+                'enable': False,
+                'max_concurrent_contacts': 1,
+                'selection': {
+                    'sql_file': None,
+                    'batch_size': 100,
+                },
+                'claims': {
+                    'enabled': True,
+                    'ttl_seconds': 900,
+                    'backoff_seconds': {
+                        'min': 1,
+                        'max': 5,
+                    },
+                },
+            }
+            merged = {**defaults, **parallel_cfg}
+            # Deep merge nested dicts
+            sel = parallel_cfg.get('selection') or {}
+            merged['selection'] = {**defaults['selection'], **sel}
+            claims = parallel_cfg.get('claims') or {}
+            bo = claims.get('backoff_seconds') or {}
+            merged['claims'] = {
+                **defaults['claims'],
+                **claims,
+                'backoff_seconds': {**defaults['claims']['backoff_seconds'], **bo},
+            }
+            # Guardrails
+            if int(merged['max_concurrent_contacts']) < 1:
+                merged['max_concurrent_contacts'] = 1
+            if int(merged['selection']['batch_size']) < 1:
+                merged['selection']['batch_size'] = 1
+            return merged
+        except Exception as e:
+            logger.error(f"Error getting parallel processing configuration: {str(e)}")
+            return {
+                'enable': False,
+                'max_concurrent_contacts': 1,
+                'selection': {
+                    'sql_file': None,
+                    'batch_size': 100,
+                },
+                'claims': {
+                    'enabled': True,
+                    'ttl_seconds': 900,
+                    'backoff_seconds': {
+                        'min': 1,
+                        'max': 5,
+                    },
+                },
+            }
     
     def get_gemini_config(self) -> Dict[str, Any]:
         """
