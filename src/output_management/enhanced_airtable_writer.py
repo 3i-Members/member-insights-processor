@@ -469,11 +469,15 @@ class MemberInsightsAirtableWriter:
             'connection_test': False,
             'record_count': None
         }
-        
+
         if self.connected:
             test_result = self.test_connection()
-            info.update(test_result)
-        
+            # Map test_connection result to connection_test
+            info['connection_test'] = test_result.get('connected', False) and test_result.get('table_accessible', False)
+            info['record_count'] = test_result.get('record_count')
+            if test_result.get('error'):
+                info['error'] = test_result['error']
+
         return info
     
     def export_sync_report(
