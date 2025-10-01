@@ -1,0 +1,64 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+
+# Project artifacts
+logs/
+output/
+*.lock
+config/files/
+
+# Documentation
+docs/_build/
+*.md
+!README.md
+
+# Tests and development
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.example
+
+# Credentials
+KEYS
+*.json.key
+*credentials*.json
+service-account*.json

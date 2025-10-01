@@ -1,0 +1,70 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: member-insights-processor
+  REGION: us-central1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+
+    - name: Configure Docker for GCR
+      run: |
+        gcloud auth configure-docker
+
+    - name: Build and Push Docker image
+      run: |
+        IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA"
+        docker build -t $IMAGE_NAME --target production .
+        docker push $IMAGE_NAME
+        echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+    - name: Deploy to Cloud Run
+      run: |
+        gcloud run deploy $SERVICE_NAME \
+          --image $IMAGE_NAME \
+          --platform managed \
+          --region $REGION \
+          --allow-unauthenticated \
+          --memory 2Gi \
+          --cpu 2 \
+          --timeout 3600 \
+          --concurrency 10 \
+          --max-instances 10 \
+          --set-env-vars "PYTHONUNBUFFERED=1" \
+          --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,\
+                        OPENAI_API_KEY=openai-api-key:latest,\
+                        SUPABASE_URL=supabase-url:latest,\
+                        SUPABASE_SERVICE_ROLE_KEY=supabase-service-role-key:latest,\
+                        GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcp-credentials"
+
+    - name: Get Service URL
+      run: |
+        SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
+          --platform managed \
+          --region $REGION \
+          --format 'value(status.url)')
+        echo "Service deployed to: $SERVICE_URL"
