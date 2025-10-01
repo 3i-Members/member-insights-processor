@@ -1,165 +1,100 @@
 # Member Insights Processor
 
-An AI-powered system that processes member data from BigQuery, generates insights using Claude/Gemini/OpenAI, and stores structured insights in Supabase for scalable, memory-efficient processing. The system features intelligent upsert logic, decoupled Airtable syncing, and Docker-optimized performance.
-
-## Features
-
-- 🔍 **Intelligent Data Processing**: Loads member data from BigQuery with smart filtering to avoid reprocessing
-- 🤖 **Multi-AI Support**: Uses Claude, Gemini Pro, or OpenAI to generate comprehensive member insights
-- 📁 **Contextual Analysis**: Applies domain-specific context based on ENI types and subtypes
-- 💾 **Supabase Storage**: Scalable PostgreSQL JSONB storage for structured insights with intelligent upsert logic
-- 🔄 **Decoupled Airtable Sync**: Independent Airtable syncing that pulls from Supabase on-demand
-- 📊 **Memory Optimization**: Docker-optimized with efficient memory management for large datasets
-- 🔀 **Smart Merging**: Automatically merges new data with existing insights using advanced processing logic
-- ⚙️ **Configurable Pipeline**: Flexible configuration system for different ENI mappings and prompts
-
-## Architecture
-
-```
-member-insights-processor/
-├── src/
-│   ├── data_processing/          # BigQuery, Supabase integration and log management
-│   │   ├── supabase_client.py    # Supabase database operations
-│   │   ├── supabase_insights_processor.py  # Core Supabase processing logic
-│   │   └── schema.py             # Pydantic data models and validation
-│   ├── context_management/       # Configuration and markdown reading
-│   ├── ai_processing/           # Claude, Gemini Pro, OpenAI integration
-│   ├── output_management/       # Markdown, JSON, and Airtable writing
-│   │   └── supabase_airtable_writer.py  # Decoupled Airtable sync from Supabase
-│   └── main.py                  # Main processing pipeline
-├── config/                      # Configuration files
-│   └── supabase_schema.sql      # Database schema for Supabase
-├── context/                     # ENI-specific context files
-├── output/                      # Generated summaries and insights
-├── logs/                        # Processing logs
-├── scripts/                     # Setup and migration utilities
-├── tests/                       # Comprehensive test suite
-├── SUPABASE_INTEGRATION.md      # Detailed Supabase setup guide
-└── README.md                    # This file
-```
-
-## Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/3i-Members/member-insights-processor.git
-   cd member-insights-processor
-   ```
-
-2. **Set up Python virtual environment**
-   ```bash
-   # Create virtual environment
-   python3 -m venv venv
-   
-   # Activate virtual environment
-   # On macOS/Linux:
-   source venv/bin/activate
-   # On Windows:
-   # venv\Scripts\activate
-   
-   # Verify activation (you should see (venv) in your prompt)
-   which python  # Should point to venv/bin/python
-   ```
-
-3. **Install dependencies**
-   ```bash
-   # Make sure virtual environment is activated
-   pip install -r requirements.txt
-   ```
-
-4. **Set up environment variables with .env file**
-   
-   Create a `.env` file in the project root directory:
-   ```bash
-   # Create .env file
-   touch .env
-   ```
-   
-   Add the following configuration to your `.env` file:
-   ```env
-   # Google Cloud credentials for BigQuery
-   GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/bigquery-credentials.json"
-   
-   # AI API keys (choose your preferred provider)
-   ANTHROPIC_API_KEY="your-anthropic-api-key"    # For Claude (recommended)
-   GEMINI_API_KEY="your-gemini-api-key"          # For Gemini
-   GOOGLE_API_KEY="your-google-api-key"          # Alternative Gemini key
-   OPENAI_API_KEY="your-openai-api-key"          # For OpenAI
-   
-   # Supabase configuration (required)
-   SUPABASE_URL="your-supabase-project-url"
-   SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
-   
-   # Airtable configuration (optional)
-   AIRTABLE_API_KEY="your-airtable-api-key"
-   AIRTABLE_BASE_ID="your-base-id"
-   AIRTABLE_TABLE_NAME="your-table-name"
-   ```
-   
-   **Important Notes:**
-   - The system automatically loads the `.env` file when you run any command
-   - No need to manually export environment variables
-   - Keep your `.env` file secure and never commit it to version control
-   - The `.env` file should be in the same directory as this README
-
-5. **Configure the system**
-   ```bash
-   # The config.yaml file is already configured with sensible defaults
-   # You can customize it if needed, but it should work out of the box
-   ```
+AI-powered system that processes member data from BigQuery, generates structured insights using Claude/Gemini/OpenAI, and stores results in Supabase. Features intelligent upsert logic, decoupled Airtable syncing, and Docker-optimized performance.
 
 ## Quick Start
 
-**Important:** Always activate your virtual environment before running any commands:
-```bash
-# Activate virtual environment
-source venv/bin/activate  # On macOS/Linux
-# venv\Scripts\activate   # On Windows
+### 1. Prerequisites
+- Python 3.9+
+- Google Cloud credentials (BigQuery access)
+- Supabase account
+- AI API key (OpenAI, Claude, or Gemini)
 
-# You should see (venv) in your terminal prompt
+### 2. Setup
+
+```bash
+# Clone and navigate
+cd member-insights-processor-standalone
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Create .env file from example
+cp .env.example .env
+
+# Edit .env with your actual credentials
+nano .env  # or vim, code, etc.
 ```
 
-### 1. Validate Setup
+**BigQuery Credentials:** Choose one method:
+- **File-based** (local dev): Set `GOOGLE_APPLICATION_CREDENTIALS` to path of your JSON key file
+- **Component-based** (containers): Set individual `GCP_*` environment variables (see [.env.example](.env.example))
+
+```
+
+### 3. Validate Setup
+
 ```bash
 python src/main.py --validate
 ```
 
-### 2. Process a Single Contact (SQL-first, per-type iteration)
+This checks:
+- ✅ Environment variables loaded
+- ✅ BigQuery connection
+- ✅ Supabase connection
+- ✅ AI provider configured
+- ✅ Config files valid
+
+### 4. Test with Single Contact
+
 ```bash
-# Process one contact (SQL filters applied; per ENI type/subtype queries)
+# Process one contact (recommended first test)
 python src/main.py --limit 1
 
-# Process a specific contact by ID
-python src/main.py --contact-id "CONTACT_123"
+# Or specify a contact ID
+python src/main.py --contact-id "CNT-ABC123"
+
+# Dry run (no database writes)
+python src/main.py --limit 1 --dry-run
 ```
 
-Behavior:
-- For each contact, the system builds combinations from `config/processing_filters.yaml`:
-  - Always includes `(eni_source_type, NULL)` first
-  - Then includes any explicit subtypes listed for that type
-- For each combination, it runs one BigQuery query which:
-  - LEFT JOINs to `elvis.eni_processing_log` and filters `epl.eni_id IS NULL`
-  - Filters by `contact_id`, `eni_source_type`, and optional `eni_source_subtype`
-- Results are concatenated and passed to AI processing
-- After processing, all ENI IDs are batch-marked as processed in BigQuery
+## How It Works
 
-### 3. Process Multiple Contacts
+The system processes data in **per-ENI-group mode**:
+
+1. Queries BigQuery for unprocessed member data (filtered by processing log)
+2. Groups data by `(eni_source_type, eni_source_subtype)` from [config/processing_filters.yaml](config/processing_filters.yaml)
+3. For each group: assembles token-budgeted context → calls AI → stores in Supabase
+4. Marks processed records in BigQuery to avoid reprocessing
+5. Optional: Sync results to Airtable (decoupled, post-processing)
+
+## Common Commands
+
 ```bash
-# Process first 10 contacts
+# Always activate venv first
+source venv/bin/activate
+
+# Validate configuration
+python src/main.py --validate
+
+# Process single contact (recommended for testing)
+python src/main.py --contact-id "CNT-ABC123"
+
+# Process batch
 python src/main.py --limit 10
 
 # Dry run (don't save results)
 python src/main.py --limit 5 --dry-run
-```
 
-### 4. Check Processing Statistics
-```bash
+# Check processing statistics
 python src/main.py --stats
-```
 
-### 5. Deactivate Virtual Environment (when done)
-```bash
-deactivate
+# Preview token-budgeted context (debug)
+pytest -q tests/test_context_preview.py
 ```
 
 ## Supabase Integration

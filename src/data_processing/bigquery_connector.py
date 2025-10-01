@@ -9,9 +9,12 @@ import pandas as pd
 import logging
 import os
 import yaml
+import json
+import tempfile
 from datetime import datetime, timezone
 from google.cloud import bigquery
 from google.auth.exceptions import DefaultCredentialsError
+from google.oauth2 import service_account
 from typing import Optional, List, Dict, Any, Tuple
 
 # Set up logging
@@ -44,12 +47,62 @@ class BigQueryConnector:
         self.log_dataset_id = 'elvis'
         self.log_table_name = 'eni_processing_log'
         self.log_table_ref = f"{self.log_project_id}.{self.log_dataset_id}.{self.log_table_name}"
-        
-        # Set up Google credentials if path is provided
+
+        # Store credentials for later use
+        self.credentials = self._load_credentials()
+
+    def _load_credentials(self) -> Optional[service_account.Credentials]:
+        """Load Google Cloud credentials from file or environment components.
+
+        Supports two methods:
+        1. File-based: GOOGLE_APPLICATION_CREDENTIALS points to a JSON key file
+        2. Component-based: Individual environment variables for each key component
+
+        Returns:
+            Credentials object or None if not configured
+        """
+        # Method 1: Check for credentials file path
         credentials_path = os.getenv('GOOGLE_CREDENTIALS_PATH') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        if credentials_path:
+        if credentials_path and os.path.exists(credentials_path):
             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-            logger.info(f"Using Google credentials from: {credentials_path}")
+            logger.info(f"Using Google credentials from file: {credentials_path}")
+            return None  # Let google.cloud.bigquery use the default path
+
+        # Method 2: Check for component-based credentials in environment
+        required_components = [
+            'GCP_PRIVATE_KEY_ID',
+            'GCP_PRIVATE_KEY',
+            'GCP_CLIENT_EMAIL',
+            'GCP_CLIENT_ID',
+            'GCP_PROJECT_ID'
+        ]
+
+        if all(os.getenv(comp) for comp in required_components):
+            logger.info("Using Google credentials from environment components")
+
+            # Build service account info dict
+            service_account_info = {
+                "type": "service_account",
+                "project_id": os.getenv('GCP_PROJECT_ID'),
+                "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID'),
+                "private_key": os.getenv('GCP_PRIVATE_KEY').replace('\\n', '\n'),  # Handle escaped newlines
+                "client_email": os.getenv('GCP_CLIENT_EMAIL'),
+                "client_id": os.getenv('GCP_CLIENT_ID'),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GCP_CLIENT_EMAIL')}"
+            }
+
+            # Create credentials from the service account info
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
+                scopes=["https://www.googleapis.com/auth/bigquery"]
+            )
+            return credentials
+
+        logger.warning("No Google Cloud credentials found. Set GOOGLE_APPLICATION_CREDENTIALS or component env vars.")
+        return None
     
     def connect(self) -> bool:
         """Establish connection to BigQuery.
@@ -65,7 +118,11 @@ class BigQueryConnector:
                 if not self.table_name: missing.append("table_name")
                 raise ValueError(f"Missing required BigQuery configuration: {', '.join(missing)}")
             
-            self.client = bigquery.Client(project=self.project_id)
+            # Create client with explicit credentials if available
+            if self.credentials:
+                self.client = bigquery.Client(project=self.project_id, credentials=self.credentials)
+            else:
+                self.client = bigquery.Client(project=self.project_id)
             # Test connection with a simple query
             query = f"SELECT COUNT(*) as count FROM `{self.project_id}.{self.dataset_id}.{self.table_name}` LIMIT 1"
             self.client.query(query).result()

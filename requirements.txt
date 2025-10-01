@@ -16,7 +16,6 @@ anthropic>=0.18.0
 
 # Database Integration
 supabase>=2.0.0
-postgrest-py>=0.13.0
 
 # Airtable Integration
 pyairtable>=2.1.0
