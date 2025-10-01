@@ -240,7 +240,7 @@ SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 # Airtable (optional - only for sync)
 AIRTABLE_API_KEY="your-airtable-api-key"
 AIRTABLE_BASE_ID="your-base-id"
-AIRTABLE_TABLE_NAME="Note Submission"
+AIRTABLE_TABLE_ID="tblXXXXXXXXXXXXXX"  # Use table ID (from URL), not table name
 ```
 
 See [.env.example](.env.example) for detailed guidance.

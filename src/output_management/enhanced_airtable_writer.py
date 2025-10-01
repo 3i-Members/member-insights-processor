@@ -66,17 +66,17 @@ class MemberInsightsAirtableWriter:
         self,
         api_key: Optional[str] = None,
         base_id: Optional[str] = None,
-        table_name: Optional[str] = None,
+        table_id: Optional[str] = None,
         rate_limit_delay: float = 0.2,  # 5 requests per second
         max_retries: int = 3
     ):
         """
         Initialize the enhanced Airtable writer.
-        
+
         Args:
             api_key: Airtable API key
-            base_id: Airtable base ID  
-            table_name: Airtable table name
+            base_id: Airtable base ID
+            table_id: Airtable table ID
             rate_limit_delay: Delay between requests (seconds)
             max_retries: Maximum retry attempts for failed requests
         """
@@ -88,7 +88,7 @@ class MemberInsightsAirtableWriter:
         
         self.api_key = api_key or os.getenv('AIRTABLE_API_KEY')
         self.base_id = base_id or os.getenv('AIRTABLE_BASE_ID')
-        self.table_name = table_name or os.getenv('AIRTABLE_TABLE_NAME')
+        self.table_id = table_id or os.getenv('AIRTABLE_TABLE_ID')
         self.rate_limit_delay = rate_limit_delay
         self.max_retries = max_retries
         
@@ -102,18 +102,18 @@ class MemberInsightsAirtableWriter:
     def _initialize_connection(self) -> bool:
         """Initialize the Airtable connection."""
         try:
-            if not all([self.api_key, self.base_id, self.table_name]):
+            if not all([self.api_key, self.base_id, self.table_id]):
                 missing = []
                 if not self.api_key: missing.append("API key")
                 if not self.base_id: missing.append("base ID")
-                if not self.table_name: missing.append("table name")
-                
+                if not self.table_id: missing.append("table ID")
+
                 logger.error(f"Missing Airtable configuration: {', '.join(missing)}")
                 return False
-            
-            self.table = Table(self.api_key, self.base_id, self.table_name)
+
+            self.table = Table(self.api_key, self.base_id, self.table_id)
             self.connected = True
-            logger.info(f"Successfully connected to Airtable table: {self.table_name}")
+            logger.info(f"Successfully connected to Airtable table: {self.table_id}")
             return True
             
         except Exception as e:
@@ -464,7 +464,7 @@ class MemberInsightsAirtableWriter:
             'connected': self.connected,
             'api_configured': bool(self.api_key),
             'base_id': self.base_id,
-            'table_name': self.table_name,
+            'table_id': self.table_id,
             'table_initialized': self.table is not None,
             'connection_test': False,
             'record_count': None
@@ -508,7 +508,7 @@ class MemberInsightsAirtableWriter:
             },
             'airtable_info': {
                 'base_id': self.base_id,
-                'table_name': self.table_name,
+                'table_id': self.table_id,
                 'connected': self.connected
             }
         }
@@ -532,7 +532,7 @@ class MemberInsightsAirtableWriter:
 def create_enhanced_airtable_writer(
     api_key: Optional[str] = None,
     base_id: Optional[str] = None,
-    table_name: Optional[str] = None
+    table_id: Optional[str] = None
 ) -> MemberInsightsAirtableWriter:
     """
     Factory function to create an enhanced Airtable writer.
@@ -540,13 +540,13 @@ def create_enhanced_airtable_writer(
     Args:
         api_key: Airtable API key
         base_id: Airtable base ID
-        table_name: Airtable table name
-        
+        table_id: Airtable table ID
+
     Returns:
         MemberInsightsAirtableWriter: Configured Airtable writer
     """
     return MemberInsightsAirtableWriter(
         api_key=api_key,
         base_id=base_id,
-        table_name=table_name
+        table_id=table_id
     ) 

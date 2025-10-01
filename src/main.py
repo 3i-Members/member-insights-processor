@@ -277,9 +277,9 @@ class MemberInsightsProcessor:
             # Validate Airtable (if configured)
             airtable_api_key = os.environ.get('AIRTABLE_API_KEY')
             airtable_base_id = os.environ.get('AIRTABLE_BASE_ID')
-            airtable_table_name = os.environ.get('AIRTABLE_TABLE_NAME')
-            
-            if airtable_api_key and airtable_base_id and airtable_table_name:
+            airtable_table_id = os.environ.get('AIRTABLE_TABLE_ID')
+
+            if airtable_api_key and airtable_base_id and airtable_table_id:
                 if self.airtable_writer:
                     airtable_info = self.airtable_writer.get_table_info()
                     report['component_status']['airtable'] = airtable_info
@@ -296,8 +296,8 @@ class MemberInsightsProcessor:
                 missing = []
                 if not airtable_base_id:
                     missing.append('AIRTABLE_BASE_ID')
-                if not airtable_table_name:
-                    missing.append('AIRTABLE_TABLE_NAME')
+                if not airtable_table_id:
+                    missing.append('AIRTABLE_TABLE_ID')
                 report['component_status']['airtable']['missing_config'] = missing
                 report['warnings'].append(f"Airtable partially configured - missing: {', '.join(missing)}")
             else:

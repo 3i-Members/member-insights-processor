@@ -29,45 +29,45 @@ class AirtableWriter:
         self,
         api_key: Optional[str] = None,
         base_id: Optional[str] = None,
-        table_name: Optional[str] = None
+        table_id: Optional[str] = None
     ):
         """
         Initialize the Airtable writer.
-        
+
         Args:
             api_key: Airtable API key (if None, will try to get from environment)
             base_id: Airtable base ID (if None, will try to get from environment)
-            table_name: Airtable table name (if None, will try to get from environment)
+            table_id: Airtable table ID (if None, will try to get from environment)
         """
         if not PYAIRTABLE_AVAILABLE:
             logger.error("pyairtable library not available. Install with: pip install pyairtable")
             self.table = None
             return
-        
+
         self.api_key = api_key or os.getenv('AIRTABLE_API_KEY')
         self.base_id = base_id or os.getenv('AIRTABLE_BASE_ID')
-        self.table_name = table_name or os.getenv('AIRTABLE_TABLE_NAME')
-        
+        self.table_id = table_id or os.getenv('AIRTABLE_TABLE_ID')
+
         self.table = None
         self._initialize_table()
-    
+
     def _initialize_table(self) -> None:
         """Initialize the Airtable table connection."""
         try:
-            if not all([self.api_key, self.base_id, self.table_name]):
+            if not all([self.api_key, self.base_id, self.table_id]):
                 missing = []
                 if not self.api_key:
                     missing.append("API key")
                 if not self.base_id:
                     missing.append("base ID")
-                if not self.table_name:
-                    missing.append("table name")
-                
+                if not self.table_id:
+                    missing.append("table ID")
+
                 logger.error(f"Missing Airtable configuration: {', '.join(missing)}")
                 return
-            
-            self.table = Table(self.api_key, self.base_id, self.table_name)
-            logger.info(f"Successfully initialized Airtable connection: {self.table_name}")
+
+            self.table = Table(self.api_key, self.base_id, self.table_id)
+            logger.info(f"Successfully initialized Airtable connection to table: {self.table_id}")
             
         except Exception as e:
             logger.error(f"Failed to initialize Airtable connection: {str(e)}")
@@ -462,7 +462,7 @@ class AirtableWriter:
             info = {
                 'api_configured': bool(self.api_key),
                 'base_id': self.base_id,
-                'table_name': self.table_name,
+                'table_id': self.table_id,
                 'table_initialized': bool(self.table),
                 'connection_test': False,
                 'record_count': None
@@ -493,17 +493,18 @@ class AirtableWriter:
 def create_airtable_writer(
     api_key: Optional[str] = None,
     base_id: Optional[str] = None,
-    table_name: Optional[str] = None
+    table_id: Optional[str] = None
 ) -> AirtableWriter:
     """
     Factory function to create an AirtableWriter instance.
-    
+
+
     Args:
         api_key: Optional API key (will use environment variable if not provided)
         base_id: Optional base ID (will use environment variable if not provided)
-        table_name: Optional table name (will use environment variable if not provided)
-        
+        table_id: Optional table ID (will use environment variable if not provided)
+
     Returns:
         AirtableWriter: Configured writer instance
     """
-    return AirtableWriter(api_key=api_key, base_id=base_id, table_name=table_name) 
+    return AirtableWriter(api_key=api_key, base_id=base_id, table_id=table_id) 

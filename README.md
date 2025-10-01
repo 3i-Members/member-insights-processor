@@ -423,11 +423,11 @@ cat .env     # Check contents (be careful not to expose keys publicly)
 # Incorrect: export ANTHROPIC_API_KEY="your-key"
 ```
 
-**Problem**: `AIRTABLE_BASE_ID` or `AIRTABLE_TABLE_NAME` missing warnings
+**Problem**: `AIRTABLE_BASE_ID` or `AIRTABLE_TABLE_ID` missing warnings
 ```bash
 # Solution: Add missing variables to .env file or ignore if not using Airtable
-echo 'AIRTABLE_BASE_ID="your-base-id"' >> .env
-echo 'AIRTABLE_TABLE_NAME="your-table-name"' >> .env
+echo 'AIRTABLE_BASE_ID="appXXXXXXXXXXXXXX"' >> .env
+echo 'AIRTABLE_TABLE_ID="tblXXXXXXXXXXXXXX"' >> .env
 ```
 
 ### Validation Issues
