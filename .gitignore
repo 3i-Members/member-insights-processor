@@ -157,7 +157,9 @@ Thumbs.db
 logs/
 output/
 *.lock
-config/files/
+config/files/*.csv
+config/files/*.json
+!config/files/*.sql
 static_files/
 
 # Credentials and secrets
