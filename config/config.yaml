@@ -176,6 +176,7 @@ openai:
   
   # Rate limiting and retry settings
   api_settings:
+    max_concurrent: 20
     max_retries: 3
     retry_delay_base: 2  # seconds (exponential backoff)
     timeout_seconds: 60
@@ -258,12 +259,12 @@ processing:
   # Parallel processing settings
   parallel:
     enable: false                  # Enable contact-level parallelization
-    max_concurrent_contacts: 4     # Max concurrent contacts to process
+    max_concurrent_contacts: 20    # Max concurrent contacts to process
 
     # SQL-driven contact selection
     selection:
       sql_file: null               # Path to SQL that selects prioritized contact_ids
-      batch_size: 100              # Query batch size (fetch_limit per wave)
+      batch_size: 20               # Query batch size (fetch_limit per wave)
 
     # Local-only claims (duplicate safety on a single machine)
     claims:

@@ -42,7 +42,7 @@ member-insights-processor/
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/3i-Members/member-insights-processor.git
    cd member-insights-processor
    ```
 
@@ -860,8 +860,37 @@ Successful output shows both the upload and a byte-for-byte readback validation.
 - For modern models (gpt-5, o1, gpt-4.1, gpt-4o):
   - Use `
 
-## Recent Changes (August 2025)
+## Production Deployment
 
+This application is production-ready and can be deployed to Google Cloud Platform using:
+
+- **Cloud Run Jobs** (Recommended) - Scheduled or on-demand batch processing
+- **Cloud Run** - API-based or triggered processing
+- **Google Kubernetes Engine (GKE)** - Advanced orchestration
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for comprehensive deployment instructions including:
+- Docker containerization and local testing
+- Cloud Run and Cloud Run Jobs setup
+- Secret management with Google Secret Manager
+- Scheduling with Cloud Scheduler
+- Resource sizing and cost optimization
+- Monitoring and logging setup
+
+### Quick Docker Build
+
+```bash
+# Build production image
+docker build -t member-insights-processor:latest --target production .
+
+# Test locally
+docker run --rm --env-file .env member-insights-processor:latest python src/main.py --validate
+```
+
+## Recent Changes (October 2025)
+
+- **Standalone Repository**: Extracted from monorepo with full git history preserved
+- **Production-Ready Deployment**: Docker, Cloud Run, and GKE deployment configurations
+- **Comprehensive CI/CD**: GitHub Actions workflows for testing and deployment
 - Supabase-driven, single Airtable sync per contact after all ENI groups complete
 - Consolidated Supabase upserts under `eni_id = COMBINED-{contact_id}-ALL`
 - Append-only arrays: `eni_source_types`, `eni_source_subtypes`; single columns are no longer updated
@@ -882,3 +911,19 @@ PYTHONPATH="src" python -m src.main --contact-id CNT-XXXXXXX --system-prompt str
 
 - Per-contact log line: `[TOKEN-LOSS] Summary for <contact_id>: events={n} | groups_skipped={m} | records_skipped={k}`
 - Single-contact console output now includes the same summary line
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+Copyright © 2025 3i Members. All rights reserved.
+
+## Support
+
+For issues, questions, or contributions, please open an issue on GitHub or contact the maintainers.

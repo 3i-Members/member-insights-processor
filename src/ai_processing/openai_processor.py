@@ -16,6 +16,7 @@ import openai as openai_pkg
 import threading
 import random
 from utils.token_utils import estimate_tokens
+from context_management.config_loader import create_config_loader
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,17 @@ class OpenAIProcessor:
         self.client = None
         self._configure_openai()
         # Global concurrency/rate limiting primitives
-        max_concurrent = int(os.getenv('OPENAI_MAX_CONCURRENT', '3'))
+        # Allow config to set concurrency; fallback to env; then default 3
+        try:
+            cfg = create_config_loader()
+            openai_cfg = cfg.get_openai_config() or {}
+            api_settings = openai_cfg.get('api_settings', {}) or {}
+            cfg_max = api_settings.get('max_concurrent')
+        except Exception:
+            cfg_max = None
+        env_val = os.getenv('OPENAI_MAX_CONCURRENT', os.getenv('OPENAI_CONCURRENCY', None))
+        chosen = env_val if env_val is not None else (str(cfg_max) if cfg_max is not None else '3')
+        max_concurrent = int(chosen)
         if not hasattr(OpenAIProcessor, '_global_semaphore'):
             OpenAIProcessor._global_semaphore = threading.BoundedSemaphore(max_concurrent)
         if not hasattr(OpenAIProcessor, '_global_resume_after_ts'):
