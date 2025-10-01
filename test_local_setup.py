@@ -175,26 +175,26 @@ def test_environment():
     """Test environment variables."""
     print("\n🌍 Testing Environment Variables...")
 
-    required_vars = {
-        "GOOGLE_APPLICATION_CREDENTIALS": "BigQuery credentials path",
-        "OPENAI_API_KEY": "OpenAI API key (or ANTHROPIC_API_KEY/GEMINI_API_KEY)"
-    }
+    # Check Google Cloud components
+    gcp_components = [
+        'GCP_PROJECT_ID',
+        'GCP_PRIVATE_KEY_ID',
+        'GCP_PRIVATE_KEY',
+        'GCP_CLIENT_EMAIL',
+        'GCP_CLIENT_ID'
+    ]
 
-    optional_vars = {
-        "SUPABASE_URL": "Supabase project URL",
-        "SUPABASE_SERVICE_ROLE_KEY": "Supabase service role key",
-        "AIRTABLE_API_KEY": "Airtable API key"
-    }
+    gcp_configured = all(os.getenv(comp) and not os.getenv(comp).startswith("your-") for comp in gcp_components)
 
-    all_good = True
-
-    for var, desc in required_vars.items():
-        value = os.getenv(var)
-        if value and not value.startswith("your-"):
-            print(f"   ✅ {var}: configured")
-        else:
-            print(f"   ❌ {var}: NOT configured ({desc})")
-            all_good = False
+    if gcp_configured:
+        print(f"   ✅ Google Cloud credentials: all 5 components configured")
+    else:
+        missing = [comp for comp in gcp_components if not os.getenv(comp) or os.getenv(comp).startswith("your-")]
+        print(f"   ❌ Google Cloud credentials: missing {len(missing)}/5 components")
+        for comp in missing[:3]:  # Show first 3 missing
+            print(f"      - {comp}")
+        if len(missing) > 3:
+            print(f"      ... and {len(missing) - 3} more")
 
     # Check AI provider
     has_ai = any([
@@ -207,6 +207,13 @@ def test_environment():
     else:
         print(f"   ⚠️  No AI provider configured (set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY)")
 
+    # Check optional vars
+    optional_vars = {
+        "SUPABASE_URL": "Supabase project URL",
+        "SUPABASE_SERVICE_ROLE_KEY": "Supabase service role key",
+        "AIRTABLE_API_KEY": "Airtable API key"
+    }
+
     for var, desc in optional_vars.items():
         value = os.getenv(var)
         if value and not value.startswith("your-"):
@@ -214,7 +221,7 @@ def test_environment():
         else:
             print(f"   ⚠️  {var}: not configured ({desc}) - optional")
 
-    return all_good
+    return gcp_configured and has_ai
 
 
 def main():
@@ -263,8 +270,9 @@ def main():
     if passed >= total - 1:  # Allow 1 failure for optional components
         print("\n🎉 Local setup is working!")
         print("\nNext steps:")
-        print("   1. Update .env with your actual BigQuery credentials path")
-        print("   2. Update .env with your AI provider API key")
+        print("   1. Extract values from your service account JSON to .env")
+        print("      See .env.example for guidance")
+        print("   2. Set your AI provider API key in .env")
         print("   3. Run: python src/main.py --validate")
         print("   4. Test with a single contact: python src/main.py --limit 1")
         return 0

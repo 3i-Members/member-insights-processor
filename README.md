@@ -26,13 +26,18 @@ pip install -r requirements.txt
 # Create .env file from example
 cp .env.example .env
 
-# Edit .env with your actual credentials
-nano .env  # or vim, code, etc.
+# Extract Google Cloud credentials from your service account JSON
+# Option 1: Use helper script (recommended)
+python scripts/extract_service_account.py /path/to/service-account.json --output .env
+
+# Option 2: Manual - open .env and copy values from your JSON
+nano .env
+
+# Add your AI provider API key and Supabase credentials
+nano .env
 ```
 
-**BigQuery Credentials:** Choose one method:
-- **File-based** (local dev): Set `GOOGLE_APPLICATION_CREDENTIALS` to path of your JSON key file
-- **Component-based** (containers): Set individual `GCP_*` environment variables (see [.env.example](.env.example))
+**Important**: All credentials are now stored as environment variables (no JSON file mounting required). This makes container deployment much simpler.
 
 ```
 

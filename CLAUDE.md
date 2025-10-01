@@ -213,27 +213,37 @@ Script: [scripts/airtable_sync_insights.py](scripts/airtable_sync_insights.py)
 
 ## Environment Variables
 
-Create `.env` file in project root:
+All configuration is via environment variables (no JSON file mounting required). This simplifies container deployment.
 
-```env
-# BigQuery
-GOOGLE_APPLICATION_CREDENTIALS="/path/to/bigquery-credentials.json"
+### Setup
 
-# AI Providers (choose one or more)
-ANTHROPIC_API_KEY="your-anthropic-api-key"
-GEMINI_API_KEY="your-gemini-api-key"
-GOOGLE_API_KEY="your-google-api-key"
+```bash
+# Extract Google Cloud credentials from service account JSON
+python scripts/extract_service_account.py /path/to/service-account.json --output .env
+
+# Or manually add to .env:
+GCP_PROJECT_ID="your-project-id"
+GCP_PRIVATE_KEY_ID="your-private-key-id"
+GCP_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GCP_CLIENT_EMAIL="your-sa@project.iam.gserviceaccount.com"
+GCP_CLIENT_ID="123456789"
+
+# AI Provider (choose one)
 OPENAI_API_KEY="your-openai-api-key"
+# ANTHROPIC_API_KEY="your-anthropic-api-key"
+# GEMINI_API_KEY="your-gemini-api-key"
 
 # Supabase (required)
-SUPABASE_URL="your-supabase-project-url"
+SUPABASE_URL="https://your-project.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
-# Airtable (optional)
+# Airtable (optional - only for sync)
 AIRTABLE_API_KEY="your-airtable-api-key"
 AIRTABLE_BASE_ID="your-base-id"
-AIRTABLE_TABLE_NAME="your-table-name"
+AIRTABLE_TABLE_NAME="Note Submission"
 ```
+
+See [.env.example](.env.example) for detailed guidance.
 
 ## Important Implementation Notes
 

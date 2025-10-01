@@ -52,23 +52,21 @@ class BigQueryConnector:
         self.credentials = self._load_credentials()
 
     def _load_credentials(self) -> Optional[service_account.Credentials]:
-        """Load Google Cloud credentials from file or environment components.
+        """Load Google Cloud credentials from environment variables.
 
-        Supports two methods:
-        1. File-based: GOOGLE_APPLICATION_CREDENTIALS points to a JSON key file
-        2. Component-based: Individual environment variables for each key component
+        Uses component-based credentials from individual environment variables.
+        This is the preferred method for containerized deployments.
+
+        Required environment variables:
+        - GCP_PROJECT_ID: Google Cloud project ID
+        - GCP_PRIVATE_KEY_ID: Private key ID from service account JSON
+        - GCP_PRIVATE_KEY: Private key (with \\n for newlines)
+        - GCP_CLIENT_EMAIL: Service account email
+        - GCP_CLIENT_ID: Client ID from service account JSON
 
         Returns:
             Credentials object or None if not configured
         """
-        # Method 1: Check for credentials file path
-        credentials_path = os.getenv('GOOGLE_CREDENTIALS_PATH') or os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-        if credentials_path and os.path.exists(credentials_path):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-            logger.info(f"Using Google credentials from file: {credentials_path}")
-            return None  # Let google.cloud.bigquery use the default path
-
-        # Method 2: Check for component-based credentials in environment
         required_components = [
             'GCP_PRIVATE_KEY_ID',
             'GCP_PRIVATE_KEY',
@@ -77,32 +75,43 @@ class BigQueryConnector:
             'GCP_PROJECT_ID'
         ]
 
-        if all(os.getenv(comp) for comp in required_components):
-            logger.info("Using Google credentials from environment components")
+        # Check if all required components are present
+        missing = [comp for comp in required_components if not os.getenv(comp)]
 
-            # Build service account info dict
-            service_account_info = {
-                "type": "service_account",
-                "project_id": os.getenv('GCP_PROJECT_ID'),
-                "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID'),
-                "private_key": os.getenv('GCP_PRIVATE_KEY').replace('\\n', '\n'),  # Handle escaped newlines
-                "client_email": os.getenv('GCP_CLIENT_EMAIL'),
-                "client_id": os.getenv('GCP_CLIENT_ID'),
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GCP_CLIENT_EMAIL')}"
-            }
+        if missing:
+            logger.error(f"Missing required Google Cloud credential components: {', '.join(missing)}")
+            logger.error("Please set all GCP_* environment variables in your .env file")
+            logger.error("See .env.example for guidance on extracting values from service account JSON")
+            return None
 
+        logger.info("Using Google Cloud credentials from environment variables")
+
+        # Build service account info dict from environment
+        service_account_info = {
+            "type": "service_account",
+            "project_id": os.getenv('GCP_PROJECT_ID'),
+            "private_key_id": os.getenv('GCP_PRIVATE_KEY_ID'),
+            "private_key": os.getenv('GCP_PRIVATE_KEY').replace('\\n', '\n'),  # Handle escaped newlines
+            "client_email": os.getenv('GCP_CLIENT_EMAIL'),
+            "client_id": os.getenv('GCP_CLIENT_ID'),
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GCP_CLIENT_EMAIL')}"
+        }
+
+        try:
             # Create credentials from the service account info
             credentials = service_account.Credentials.from_service_account_info(
                 service_account_info,
                 scopes=["https://www.googleapis.com/auth/bigquery"]
             )
+            logger.info(f"Successfully loaded credentials for: {os.getenv('GCP_CLIENT_EMAIL')}")
             return credentials
-
-        logger.warning("No Google Cloud credentials found. Set GOOGLE_APPLICATION_CREDENTIALS or component env vars.")
-        return None
+        except Exception as e:
+            logger.error(f"Failed to create credentials from environment variables: {e}")
+            logger.error("Check that GCP_PRIVATE_KEY is properly formatted with \\n for newlines")
+            return None
     
     def connect(self) -> bool:
         """Establish connection to BigQuery.
@@ -132,7 +141,8 @@ class BigQueryConnector:
             
         except DefaultCredentialsError as e:
             logger.error(f"Google Cloud credentials not found: {str(e)}")
-            logger.error("Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_CREDENTIALS_PATH environment variable")
+            logger.error("Set GCP_* environment variables in your .env file")
+            logger.error("See .env.example for guidance")
             return False
         except Exception as e:
             logger.error(f"Failed to connect to BigQuery: {str(e)}")
