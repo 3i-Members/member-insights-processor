@@ -9,10 +9,13 @@ import os
 import logging
 import pandas as pd
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Tuple
 from pathlib import Path
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from uuid import uuid4
+import threading
 
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent / ".env"
@@ -45,6 +48,8 @@ from member_insights_processor.core.utils.logging import create_enhanced_logger
 from member_insights_processor.core.utils.tokens import estimate_tokens
 from member_insights_processor.io.writers.markdown import LLMTraceWriter
 from member_insights_processor.io.writers.supabase_sync import SupabaseAirtableSync
+from member_insights_processor.core.utils.claims import create_local_claimer
+from member_insights_processor.core.utils.run_summary import RunSummaryWriter
 
 # Configure logging
 logging.basicConfig(
@@ -89,6 +94,7 @@ class MemberInsightsProcessor:
         self.supabase_client = None
         self.supabase_processor = None
         self.supabase_airtable_sync = None
+        self.run_summary_writer = None
         
         self._initialize_components()
     
@@ -1132,20 +1138,26 @@ CONTEXT PACKAGES BY ENI GROUP:
     
     def process_multiple_contacts(
         self,
-        contact_ids: List[str],
+        contact_ids: Optional[List[str]],
         system_prompt_key: str = "structured_insight",
         dry_run: bool = False,
-        max_contacts: Optional[int] = None
+        max_contacts: Optional[int] = None,
+        contact_ids_sql: Optional[str] = None,
+        selection_batch_size: Optional[int] = None,
+        job_start_time: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Process multiple contacts.
-        
+
         Args:
             contact_ids: List of specific contact IDs to process (if None, processes all)
-            limit: Maximum number of contacts to process
             system_prompt_key: System prompt key to use
             dry_run: If True, don't save results or update logs
-            
+            max_contacts: Maximum number of contacts to process
+            contact_ids_sql: SQL query text for selecting prioritized contact_ids
+            selection_batch_size: SQL selection batch size per wave
+            job_start_time: Job start time in ISO format
+
         Returns:
             Dict[str, Any]: Processing summary
         """
@@ -1165,61 +1177,317 @@ CONTEXT PACKAGES BY ENI GROUP:
             'start_time': datetime.now().isoformat(),
             'end_time': None
         }
-        
+
         try:
             # Ensure BigQuery connection is established
             if not self.bigquery_connector.connect():
                 summary['errors'].append("Failed to connect to BigQuery")
                 summary['end_time'] = datetime.now().isoformat()
                 return summary
-            
-            # Get contact IDs to process
+
+            # Determine parallel config
+            parallel_cfg = self.config_loader.get_parallel_config()
+            enable_parallel = bool(parallel_cfg.get('enable'))
+            max_workers = int(parallel_cfg.get('max_concurrent_contacts', 1))
+            sel_cfg = parallel_cfg.get('selection') or {}
+            default_batch_size = int(sel_cfg.get('batch_size', 100))
+            batch_size = int(selection_batch_size or default_batch_size)
+            claims_cfg = parallel_cfg.get('claims') or {}
+            claimer = create_local_claimer(enabled=bool(claims_cfg.get('enabled', True)))
+            ttl_seconds = int(claims_cfg.get('ttl_seconds', 900))
+
+            # Capture job start time (UTC ISO) once
+            run_start = job_start_time or datetime.utcnow().isoformat() + 'Z'
+            run_id = str(uuid4())
+            # Selection cutoff: one week ago to avoid reprocessing recent runs
+            selection_cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat() + 'Z'
+            logger.info(f"Parallel run config: enable={enable_parallel} workers={max_workers} batch_size={batch_size} job_start_time={run_start}")
+
+            # Initialize run summary writer and run directory (only for parallel mode)
+            rsw: Optional[RunSummaryWriter] = None
+            if enable_parallel and max_workers > 1:
+                rsw = RunSummaryWriter(run_id=run_id, base_dir='var/logs/runs')
+                self.run_summary_writer = rsw
+
+            # If contact_ids provided explicitly, process those; else use SQL selection or fallback to unique IDs
+            explicit_ids = contact_ids is not None
             if contact_ids is None:
-                contact_ids = self.bigquery_connector.get_unique_contact_ids(limit=max_contacts)
-            elif max_contacts:
-                contact_ids = contact_ids[:max_contacts]
-            
-            summary['total_contacts'] = len(contact_ids)
-            logger.info(f"Starting processing of {len(contact_ids)} contacts")
-            
-            # Process each contact
-            for i, contact_id in enumerate(contact_ids, 1):
-                try:
-                    logger.info(f"Processing contact {i}/{len(contact_ids)}: {contact_id}")
-                    
-                    result = self.process_contact(
-                        contact_id=contact_id,
-                        system_prompt_key=system_prompt_key,
-                        dry_run=dry_run
+                if contact_ids_sql:
+                    variables = {
+                        'system_prompt': system_prompt_key,
+                        'generator': 'structured_insight',
+                        # Use one-week-ago cutoff to reduce duplicate reprocessing
+                        'job_start_time': selection_cutoff,
+                    }
+                    contact_ids = self.bigquery_connector.get_contact_ids_from_sql(
+                        sql_text=contact_ids_sql,
+                        variables=variables,
+                        offset=0,
+                        limit=max_contacts,
                     )
-                    
-                    summary['contact_results'][contact_id] = result
-                    
-                    if result['success']:
-                        summary['successful_contacts'] += 1
-                        summary['total_processed_eni_ids'] += len(result['processed_eni_ids'])
-                        summary['total_files_created'] += len(result['files_created'])
-                        summary['total_airtable_records'] += len(result['airtable_records'])
-                        # Aggregate token-loss stats
-                        summary['token_loss_events'] += result.get('token_loss_events', 0)
-                        summary['token_loss_groups_skipped'] += result.get('token_loss_groups_skipped', 0)
-                        summary['token_loss_records_skipped'] += result.get('token_loss_records_skipped', 0)
-                    else:
+                else:
+                    # Use prioritized selection: never-processed first, then oldest processed before cutoff
+                    contact_ids = self.bigquery_connector.get_prioritized_contact_ids(
+                        system_prompt_key=system_prompt_key,
+                        generator='structured_insight',
+                        cutoff_time_iso=selection_cutoff,
+                        limit=max_contacts,
+                        offset=0,
+                    )
+
+            if max_contacts:
+                contact_ids = contact_ids[:max_contacts]
+
+            summary['total_contacts'] = len(contact_ids)
+            logger.info(f"Starting processing of {len(contact_ids)} contacts (parallel={enable_parallel})")
+
+            # Selection mode reporting
+            selection_mode = 'sql' if contact_ids_sql else ('explicit_list' if explicit_ids else 'fallback_unique')
+
+            # Emit run-start event and console banner
+            if rsw:
+                rsw.append_event({
+                    'event': 'run_started',
+                    'run_id': run_id,
+                    'job_start_time': run_start,
+                    'selection_cutoff_time': selection_cutoff,
+                    'parallel': {
+                        'enabled': enable_parallel,
+                        'max_workers': max_workers,
+                        'batch_size': batch_size,
+                        'claims_ttl_seconds': ttl_seconds,
+                    },
+                    'selection_mode': selection_mode,
+                    'total_contacts_selected': len(contact_ids),
+                })
+                logger.info(
+                    f"RUN {run_id} | workers={max_workers} batch_size={batch_size} selection={selection_mode} start={run_start}"
+                )
+
+            # Dispatcher helpers
+            in_flight = set()
+            seen = set()
+            # Additional counters
+            total_scheduled = 0
+            total_started = 0
+            total_completed_success = 0
+            total_skipped_claim = 0
+            total_failed = 0
+
+            def worker(cid: str) -> Tuple[str, Dict[str, Any]]:
+                key = f"contact/{cid}"
+                acquired = True
+                if claimer:
+                    # Log claim attempt
+                    if rsw:
+                        rsw.append_event({'event': 'claim_attempt', 'contact_id': cid, 'key': key})
+                    acquired = claimer.acquire(key, ttl_seconds, run_id)
+                    if rsw:
+                        rsw.append_event({'event': 'claim_acquired' if acquired else 'claim_skipped', 'contact_id': cid, 'key': key})
+                    if not acquired:
+                        # Skipped due to claim
+                        return cid, {
+                            'success': True,
+                            'status': 'skipped_claim',
+                            'processed_eni_ids': [],
+                            'files_created': [],
+                            'airtable_records': [],
+                            'errors': [f"skipped_due_to_claim:{cid}"]
+                        }
+                try:
+                    # Emit start event
+                    if rsw:
+                        rsw.append_event({'event': 'contact_started', 'contact_id': cid})
+                    # Track started count locally by emitting via event only; final totals will be derived
+                    res = self.process_contact(contact_id=cid, system_prompt_key=system_prompt_key, dry_run=dry_run)
+                    return cid, res
+                finally:
+                    if claimer and acquired:
+                        try:
+                            claimer.release(key)
+                            if rsw:
+                                rsw.append_event({'event': 'claim_released', 'contact_id': cid, 'key': key})
+                        except Exception:
+                            pass
+
+            def schedule_batch(executor: ThreadPoolExecutor, batch_ids: List[str]):
+                futures = []
+                for cid in batch_ids:
+                    if cid in seen:
+                        continue
+                    seen.add(cid)
+                    in_flight.add(cid)
+                    if rsw:
+                        rsw.append_event({'event': 'contact_scheduled', 'contact_id': cid})
+                    futures.append(executor.submit(worker, cid))
+                return futures
+
+            if enable_parallel and max_workers > 1 and (contact_ids_sql or explicit_ids):
+                # Re-query loop for SQL-driven selection or explicit list batched
+                all_futures = set()
+                idx = 0
+                with ThreadPoolExecutor(max_workers=max_workers) as ex:
+                    sql_cursor = 0
+                    while True:
+                        # Drain completed
+                        done = [f for f in list(all_futures) if f.done()]
+                        for f in done:
+                            all_futures.discard(f)
+                            cid, result = f.result()
+                            in_flight.discard(cid)
+                            summary['contact_results'][cid] = result
+                            # Persist per-contact summary artifact
+                            if rsw:
+                                try:
+                                    contact_payload = dict(result)
+                                    contact_payload['status'] = 'success' if result.get('success') else (
+                                        'skipped_claim' if any('skipped_due_to_claim' in e for e in result.get('errors', [])) else 'failed'
+                                    )
+                                    contact_payload['start_ts'] = summary['start_time']
+                                    contact_payload['end_ts'] = datetime.now().isoformat()
+                                    rsw.write_contact_summary(cid, contact_payload)
+                                    rsw.append_event({'event': 'contact_completed', 'contact_id': cid, 'status': contact_payload['status']})
+                                except Exception:
+                                    pass
+                            if result.get('errors') and any("skipped" in e for e in result['errors']):
+                                total_skipped_claim += 1
+                                continue
+                            if result.get('success'):
+                                summary['successful_contacts'] += 1
+                                total_completed_success += 1
+                                summary['total_processed_eni_ids'] += len(result.get('processed_eni_ids', []))
+                                summary['total_files_created'] += len(result.get('files_created', []))
+                                summary['total_airtable_records'] += len(result.get('airtable_records', []))
+                                summary['token_loss_events'] += result.get('token_loss_events', 0)
+                                summary['token_loss_groups_skipped'] += result.get('token_loss_groups_skipped', 0)
+                                summary['token_loss_records_skipped'] += result.get('token_loss_records_skipped', 0)
+                            else:
+                                summary['failed_contacts'] += 1
+                                total_failed += 1
+                                summary['errors'].extend(result.get('errors', []))
+
+                        capacity = max_workers - len(in_flight)
+                        if capacity > 0:
+                            # Respect overall max_contacts cap if provided
+                            remaining_allowed = None
+                            if max_contacts is not None:
+                                remaining_allowed = max(0, int(max_contacts) - len(seen))
+                                if remaining_allowed == 0 and not all_futures and not in_flight:
+                                    break
+                            # Decide source for next batch
+                            if contact_ids_sql:
+                                variables = {
+                                    'system_prompt': system_prompt_key,
+                                    'generator': 'structured_insight',
+                                    # Continue using the same cutoff within the run
+                                    'job_start_time': selection_cutoff,
+                                }
+                                # Skip anything we've already scheduled (seen)
+                                offset = len(seen)
+                                fetch_limit = min(batch_size, capacity)
+                                if remaining_allowed is not None:
+                                    fetch_limit = min(fetch_limit, remaining_allowed)
+                                next_ids = self.bigquery_connector.get_contact_ids_from_sql(
+                                    sql_text=contact_ids_sql,
+                                    variables=variables,
+                                    offset=offset,
+                                    limit=fetch_limit,
+                                )
+                            else:
+                                # Prioritized list paging: fetch next chunk using offset
+                                next_ids = self.bigquery_connector.get_prioritized_contact_ids(
+                                    system_prompt_key=system_prompt_key,
+                                    generator='structured_insight',
+                                    cutoff_time_iso=selection_cutoff,
+                                    limit=min(batch_size, capacity if remaining_allowed is None else min(capacity, remaining_allowed)),
+                                    offset=len(seen),
+                                )
+
+                            if next_ids:
+                                logger.info(f"Scheduling {len(next_ids)} contacts (in_flight={len(in_flight)}, capacity={capacity}, offset={len(seen)}, fetch_limit={min(batch_size, capacity)})")
+                                if rsw:
+                                    rsw.append_event({
+                                        'event': 'schedule_wave',
+                                        'in_flight': len(in_flight),
+                                        'capacity': capacity,
+                                        'offset': len(seen),
+                                        'fetch_limit': min(batch_size, capacity),
+                                        'scheduled_count': len(next_ids),
+                                    })
+                                batch_futs = schedule_batch(ex, next_ids[:capacity])
+                                for bf in batch_futs:
+                                    all_futures.add(bf)
+                                total_scheduled += len(next_ids[:capacity])
+                            else:
+                                if not all_futures and not in_flight:
+                                    break
+                        # Brief yield to avoid busy loop
+                        time.sleep(0.1)
+                    # Final drain
+                    for f in as_completed(list(all_futures)):
+                        cid, result = f.result()
+                        in_flight.discard(cid)
+                        summary['contact_results'][cid] = result
+                        if rsw:
+                            try:
+                                contact_payload = dict(result)
+                                contact_payload['status'] = 'success' if result.get('success') else (
+                                    'skipped_claim' if any('skipped_due_to_claim' in e for e in result.get('errors', [])) else 'failed'
+                                )
+                                contact_payload['start_ts'] = summary['start_time']
+                                contact_payload['end_ts'] = datetime.now().isoformat()
+                                rsw.write_contact_summary(cid, contact_payload)
+                                rsw.append_event({'event': 'contact_completed', 'contact_id': cid, 'status': contact_payload['status']})
+                            except Exception:
+                                pass
+                        if result.get('errors') and any("skipped" in e for e in result['errors']):
+                            total_skipped_claim += 1
+                            continue
+                        if result.get('success'):
+                            summary['successful_contacts'] += 1
+                            total_completed_success += 1
+                            summary['total_processed_eni_ids'] += len(result.get('processed_eni_ids', []))
+                            summary['total_files_created'] += len(result.get('files_created', []))
+                            summary['total_airtable_records'] += len(result.get('airtable_records', []))
+                            summary['token_loss_events'] += result.get('token_loss_events', 0)
+                            summary['token_loss_groups_skipped'] += result.get('token_loss_groups_skipped', 0)
+                            summary['token_loss_records_skipped'] += result.get('token_loss_records_skipped', 0)
+                        else:
+                            summary['failed_contacts'] += 1
+                            total_failed += 1
+                            summary['errors'].extend(result.get('errors', []))
+            else:
+                # Sequential fallback over provided IDs
+                for i, contact_id in enumerate(contact_ids, 1):
+                    try:
+                        logger.info(f"Processing contact {i}/{len(contact_ids)}: {contact_id}")
+                        result = self.process_contact(
+                            contact_id=contact_id,
+                            system_prompt_key=system_prompt_key,
+                            dry_run=dry_run
+                        )
+                        summary['contact_results'][contact_id] = result
+                        if result['success']:
+                            summary['successful_contacts'] += 1
+                            summary['total_processed_eni_ids'] += len(result['processed_eni_ids'])
+                            summary['total_files_created'] += len(result['files_created'])
+                            summary['total_airtable_records'] += len(result['airtable_records'])
+                            summary['token_loss_events'] += result.get('token_loss_events', 0)
+                            summary['token_loss_groups_skipped'] += result.get('token_loss_groups_skipped', 0)
+                            summary['token_loss_records_skipped'] += result.get('token_loss_records_skipped', 0)
+                        else:
+                            summary['failed_contacts'] += 1
+                            summary['errors'].extend(result['errors'])
+                        if i % 10 == 0 or i == len(contact_ids):
+                            logger.info(f"Progress: {i}/{len(contact_ids)} contacts processed")
+                    except Exception as e:
+                        error_msg = f"Unexpected error processing contact {contact_id}: {str(e)}"
+                        summary['errors'].append(error_msg)
                         summary['failed_contacts'] += 1
-                        summary['errors'].extend(result['errors'])
-                    
-                    # Log progress every 10 contacts
-                    if i % 10 == 0 or i == len(contact_ids):
-                        logger.info(f"Progress: {i}/{len(contact_ids)} contacts processed")
-                    
-                except Exception as e:
-                    error_msg = f"Unexpected error processing contact {contact_id}: {str(e)}"
-                    summary['errors'].append(error_msg)
-                    summary['failed_contacts'] += 1
-                    logger.error(error_msg)
-            
+                        logger.error(error_msg)
+
             summary['end_time'] = datetime.now().isoformat()
-            
+
             # Generate final report
             logger.info(f"""
 Processing Complete:
@@ -1234,9 +1502,63 @@ Processing Complete:
 - Token-Loss Groups Skipped: {summary['token_loss_groups_skipped']}
 - Token-Loss Records Skipped: {summary['token_loss_records_skipped']}
 """)
-            
+
+            # Write final structured summary artifacts (parallel mode only)
+            if rsw:
+                final_summary = {
+                    'run_id': run_id,
+                    'job_start_time': run_start,
+                    'selection_mode': selection_mode,
+                    'parallel': {
+                        'enabled': enable_parallel,
+                        'max_workers': max_workers,
+                        'batch_size': batch_size,
+                        'claims_ttl_seconds': ttl_seconds,
+                    },
+                    'start_time': summary['start_time'],
+                    'end_time': summary['end_time'],
+                    'totals': {
+                        'total_contacts_selected': summary['total_contacts'],
+                        'total_scheduled': total_scheduled,
+                        'total_started': len(summary['contact_results']),
+                        'total_completed_success': total_completed_success,
+                        'total_skipped_claim': total_skipped_claim,
+                        'total_failed': total_failed,
+                        'total_eni_ids_processed': summary['total_processed_eni_ids'],
+                        'total_ai_calls': None,
+                    },
+                    'per_contact': [
+                        {
+                            'contact_id': cid,
+                            'status': (
+                                'success' if res.get('success') else (
+                                    'skipped_claim' if any('skipped_due_to_claim' in e for e in res.get('errors', [])) else 'failed'
+                                )
+                            ),
+                            'groups_processed': None,
+                            'eni_ids_processed': len(res.get('processed_eni_ids', [])),
+                            'files_created': len(res.get('files_created', [])),
+                            'airtable_records': len(res.get('airtable_records', [])),
+                            'supabase': {
+                                'action': res.get('supabase_action'),
+                                'record_id': res.get('supabase_record_id'),
+                            },
+                            'airtable': res.get('airtable_final_sync'),
+                            'tokens': {
+                                'input_total': res.get('est_input_tokens'),
+                                'output_latest': res.get('est_insights_tokens'),
+                                'generation_time_seconds_total': res.get('generation_time_seconds'),
+                            },
+                            'errors': res.get('errors', []),
+                        }
+                        for cid, res in summary['contact_results'].items()
+                    ],
+                    'errors': summary['errors'],
+                }
+                rsw.write_final_summary(final_summary)
+
             return summary
-            
+
         except Exception as e:
             summary['errors'].append(f"Unexpected error in batch processing: {str(e)}")
             summary['end_time'] = datetime.now().isoformat()
@@ -1313,7 +1635,13 @@ def main():
     parser.add_argument("--structured-airtable-test", action="store_true", help="Test structured insights Airtable connection")
     parser.add_argument("--structured-batch-sync", action="store_true", help="Sync existing JSON insights to structured Airtable")
     parser.add_argument("--show-filter", action="store_true", help="Show current processing filter configuration")
-    
+    # Parallel/selection flags
+    parser.add_argument("--parallel", action="store_true", help="Enable contact-level parallel processing")
+    parser.add_argument("--max-concurrent-contacts", type=int, help="Max contacts processed concurrently")
+    parser.add_argument("--selection-batch-size", type=int, help="SQL selection batch size per wave")
+    parser.add_argument("--contacts-sql", help="Path to SQL file selecting prioritized contact_ids")
+    parser.add_argument("--contacts-sql-inline", help="Inline SQL selecting prioritized contact_ids")
+
     args = parser.parse_args()
     
     try:
@@ -1442,13 +1770,40 @@ def main():
             if not processor.bigquery_connector.connect():
                 print("❌ Failed to connect to BigQuery")
                 return
-            
-            # First get contact IDs with limit
-            contact_ids = processor.bigquery_connector.get_unique_contact_ids(limit=args.limit)
+
+            # Load SQL (file or inline) if provided
+            contacts_sql_text = None
+            if args.contacts_sql_inline:
+                contacts_sql_text = args.contacts_sql_inline
+            elif args.contacts_sql:
+                try:
+                    with open(args.contacts_sql, 'r', encoding='utf-8') as f:
+                        contacts_sql_text = f.read()
+                except Exception as e:
+                    logger.warning(f"Failed to read contacts SQL file: {e}")
+
+            # Parallel overrides to config
+            if args.parallel or args.max_concurrent_contacts or args.selection_batch_size:
+                try:
+                    pcfg = processor.config_loader.get_parallel_config()
+                    if args.parallel:
+                        pcfg['enable'] = True
+                    if args.max_concurrent_contacts:
+                        pcfg['max_concurrent_contacts'] = int(args.max_concurrent_contacts)
+                    if args.selection_batch_size:
+                        pcfg.setdefault('selection', {})['batch_size'] = int(args.selection_batch_size)
+                    # Write back into context for this run (in-memory only)
+                    processor.config_loader.config_data.setdefault('processing', {}).setdefault('parallel', {}).update(pcfg)
+                except Exception as e:
+                    logger.warning(f"Failed to apply parallel CLI overrides: {e}")
+
             result = processor.process_multiple_contacts(
-                contact_ids=contact_ids,
+                contact_ids=None if contacts_sql_text else processor.bigquery_connector.get_unique_contact_ids(limit=args.limit),
                 system_prompt_key=args.system_prompt,
-                dry_run=args.dry_run
+                dry_run=args.dry_run,
+                max_contacts=args.limit,
+                contact_ids_sql=contacts_sql_text,
+                selection_batch_size=args.selection_batch_size,
             )
             print("Batch processing completed:")
             print(f"Total contacts: {result['total_contacts']}")

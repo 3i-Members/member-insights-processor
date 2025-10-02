@@ -258,8 +258,8 @@ processing:
 
   # Parallel processing settings
   parallel:
-    enable: false                  # Enable contact-level parallelization
-    max_concurrent_contacts: 20    # Max concurrent contacts to process
+    enable: true                   # Enable contact-level parallelization
+    max_concurrent_contacts: 5     # Max concurrent contacts to process
 
     # SQL-driven contact selection
     selection:

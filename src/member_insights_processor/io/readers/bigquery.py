@@ -147,7 +147,69 @@ class BigQueryConnector:
         except Exception as e:
             logger.error(f"Failed to connect to BigQuery: {str(e)}")
             return False
-    
+
+    def get_contact_ids_from_sql(
+        self,
+        sql_text: str,
+        variables: Optional[Dict[str, Any]] = None,
+        offset: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> List[str]:
+        """
+        Execute a SQL that returns prioritized contact_ids.
+
+        Performs simple variable substitution for {{system_prompt}}, {{generator}}, {{job_start_time}}.
+        Optionally appends LIMIT/OFFSET if not present in the provided SQL.
+        """
+        if not self.client:
+            if not self.connect():
+                raise RuntimeError("Failed to connect to BigQuery")
+
+        vars = variables or {}
+        system_prompt = str(vars.get("system_prompt", "structured_insight"))
+        generator = str(vars.get("generator", "structured_insight"))
+        job_start_time = str(vars.get("job_start_time", datetime.utcnow().isoformat() + "Z"))
+
+        def quoted(s: str) -> str:
+            # Basic escaping for single quotes
+            return "'" + s.replace("'", "\\'") + "'"
+
+        rendered = sql_text
+        rendered = rendered.replace("{{system_prompt}}", quoted(system_prompt))
+        rendered = rendered.replace("{{generator}}", quoted(generator))
+        rendered = rendered.replace("{{job_start_time}}", quoted(job_start_time))
+
+        lower = rendered.lower()
+        # Only append LIMIT/OFFSET if caller didn't include either term
+        if limit is not None and " limit " not in lower:
+            rendered = f"{rendered}\nLIMIT {int(limit)}"
+        if offset is not None and " offset " not in lower:
+            rendered = f"{rendered}\nOFFSET {int(offset)}"
+
+        logger.info(
+            f"Executing contact selection SQL (limit={limit}, offset={offset})"
+        )
+        query_job = self.client.query(rendered)
+        results = query_job.result()
+        ids: List[str] = []
+        for row in results:
+            cid = getattr(row, "contact_id", None)
+            if cid is None:
+                try:
+                    cid = row["contact_id"]
+                except Exception:
+                    cid = None
+            if cid:
+                ids.append(str(cid))
+        # Dedup while preserving order
+        seen = set()
+        ordered: List[str] = []
+        for x in ids:
+            if x not in seen:
+                seen.add(x)
+                ordered.append(x)
+        return ordered
+
     def _build_eni_filter_clause(self, eni_source_type: str, eni_source_subtype: Optional[str] = None) -> str:
         """
         Build SQL WHERE clause for a specific ENI type/subtype combination.
@@ -268,7 +330,82 @@ class BigQueryConnector:
         except Exception as e:
             logger.error(f"Error fetching unique contact IDs: {str(e)}")
             raise
-    
+
+    def get_prioritized_contact_ids(
+        self,
+        system_prompt_key: str = 'structured_insight',
+        generator: str = 'structured_insight',
+        cutoff_time_iso: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> List[str]:
+        """Select contact_ids prioritized by last processed timestamp.
+
+        Priority:
+        - Contacts never processed (last_processed IS NULL) first
+        - Then by oldest last_processed ascending
+        - Excludes contacts processed within the cutoff window (>= cutoff_time_iso)
+
+        Args:
+            system_prompt_key: processor_system_prompt_key to match in log table
+            generator: processor_generator to match in log table
+            cutoff_time_iso: ISO timestamp; exclude contacts with last_processed >= this
+            limit: max contacts to return
+            offset: offset for pagination
+
+        Returns:
+            List[str]: prioritized contact_ids
+        """
+        if not self.client:
+            raise ConnectionError("Not connected to BigQuery. Call connect() first.")
+
+        try:
+            limit_clause = f"\nLIMIT {int(limit)}" if limit is not None else ""
+            offset_clause = f"\nOFFSET {int(offset)}" if offset is not None else ""
+
+            # Use provided cutoff or default to now-7d on server side if not specified
+            cutoff_expr = (
+                f"TIMESTAMP('{cutoff_time_iso}')" if cutoff_time_iso else "TIMESTAMP(DATETIME_SUB(CURRENT_DATETIME(), INTERVAL 7 DAY))"
+            )
+
+            query = f"""
+                WITH last_proc AS (
+                  SELECT contact_id, MAX(processed_at) AS last_processed
+                  FROM `{self.log_table_ref}`
+                  WHERE processing_status = 'completed'
+                    AND processor_system_prompt_key = '{system_prompt_key}'
+                    AND processor_generator = '{generator}'
+                  GROUP BY contact_id
+                ),
+                available AS (
+                  SELECT DISTINCT eva.contact_id, lp.last_processed
+                  FROM `{self.project_id}.{self.dataset_id}.{self.table_name}` eva
+                  LEFT JOIN last_proc lp
+                    ON lp.contact_id = eva.contact_id
+                  WHERE eva.contact_id IS NOT NULL
+                    AND eva.description IS NOT NULL
+                    AND TRIM(eva.description) != ''
+                )
+                SELECT contact_id
+                FROM available
+                WHERE last_processed IS NULL OR last_processed < {cutoff_expr}
+                ORDER BY (last_processed IS NULL) DESC, last_processed ASC, contact_id
+                {limit_clause}
+                {offset_clause}
+            """
+
+            logger.info(
+                f"Fetching prioritized contact IDs (limit={limit}, offset={offset}, cutoff={cutoff_time_iso})"
+            )
+            query_job = self.client.query(query)
+            results = query_job.result()
+            contact_ids = [row.contact_id for row in results if getattr(row, 'contact_id', None)]
+            logger.info(f"Prioritized selection returned {len(contact_ids)} contacts")
+            return contact_ids
+        except Exception as e:
+            logger.error(f"Error fetching prioritized contact IDs: {str(e)}")
+            raise
+
     def get_eni_combinations_for_processing(self, processing_rules: Dict[str, Any]) -> List[Tuple[str, Optional[str]]]:
         """
         Get list of (eni_source_type, eni_source_subtype) combinations to process based on processing rules.
