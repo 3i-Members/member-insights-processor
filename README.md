@@ -44,7 +44,8 @@ nano .env
 ### 3. Validate Setup
 
 ```bash
-python src/main.py --validate
+export PYTHONPATH=src
+python -m member_insights_processor.pipeline.runner --validate
 ```
 
 This checks:
@@ -57,14 +58,17 @@ This checks:
 ### 4. Test with Single Contact
 
 ```bash
+# Set PYTHONPATH
+export PYTHONPATH=src
+
 # Process one contact (recommended first test)
-python src/main.py --limit 1
+python -m member_insights_processor.pipeline.runner --limit 1
 
 # Or specify a contact ID
-python src/main.py --contact-id "CNT-ABC123"
+python -m member_insights_processor.pipeline.runner --contact-id "CNT-ABC123"
 
 # Dry run (no database writes)
-python src/main.py --limit 1 --dry-run
+python -m member_insights_processor.pipeline.runner --limit 1 --dry-run
 ```
 
 ## How It Works
@@ -80,26 +84,30 @@ The system processes data in **per-ENI-group mode**:
 ## Common Commands
 
 ```bash
-# Always activate venv first
+# Always activate venv and set PYTHONPATH first
 source venv/bin/activate
+export PYTHONPATH=src
 
 # Validate configuration
-python src/main.py --validate
+python -m member_insights_processor.pipeline.runner --validate
 
 # Process single contact (recommended for testing)
-python src/main.py --contact-id "CNT-ABC123"
+python -m member_insights_processor.pipeline.runner --contact-id "CNT-ABC123"
 
 # Process batch
-python src/main.py --limit 10
+python -m member_insights_processor.pipeline.runner --limit 10
+
+# Process with parallel workers (production)
+python -m member_insights_processor.pipeline.runner --limit 100 --parallel --max-concurrent-contacts 5
 
 # Dry run (don't save results)
-python src/main.py --limit 5 --dry-run
+python -m member_insights_processor.pipeline.runner --limit 5 --dry-run
 
 # Check processing statistics
-python src/main.py --stats
+python -m member_insights_processor.pipeline.runner --stats
 
-# Preview token-budgeted context (debug)
-pytest -q tests/test_context_preview.py
+# View processing filter rules
+python -m member_insights_processor.pipeline.runner --show-filter
 ```
 
 ## Supabase Integration
@@ -202,90 +210,133 @@ airtable:
 ### Command Line Interface
 
 ```bash
+# Set PYTHONPATH for all commands
+export PYTHONPATH=src
+
 # Basic processing
-python src/main.py
+python -m member_insights_processor.pipeline.runner
 
 # Process specific contact with custom prompt
-python src/main.py --contact-id "CONTACT_123" --system-prompt "insight_generation"
+python -m member_insights_processor.pipeline.runner --contact-id "CNT-ABC123" --system-prompt "structured_insight"
 
 # Batch processing with limit
-python src/main.py --limit 50
+python -m member_insights_processor.pipeline.runner --limit 50
+
+# Parallel processing (production)
+python -m member_insights_processor.pipeline.runner --limit 100 --parallel --max-concurrent-contacts 5
 
 # Dry run for testing
-python src/main.py --contact-id "CONTACT_123" --dry-run
+python -m member_insights_processor.pipeline.runner --contact-id "CNT-ABC123" --dry-run
 
-# Clear processing logs
-python src/main.py --clear-logs
+# View processing filter rules
+python -m member_insights_processor.pipeline.runner --show-filter
 ```
 
 ### Programmatic Usage
 
 ```python
-from src.main import MemberInsightsProcessor
+import sys
+sys.path.insert(0, 'src')
 
-# Initialize processor
-processor = MemberInsightsProcessor("config/config.yaml")
+from member_insights_processor.pipeline.config import ConfigLoader
+from member_insights_processor.io.readers.bigquery import BigQueryReader
+from member_insights_processor.io.writers.supabase import SupabaseInsightsClient
 
-# Validate setup
-validation = processor.validate_setup()
-if validation['valid']:
-    print("System ready!")
+# Load configuration
+config_loader = ConfigLoader('config/config.yaml')
 
-# Process a single contact
-result = processor.process_contact("CONTACT_123")
-print(f"Success: {result['success']}")
-print(f"Files created: {result['files_created']}")
+# Initialize BigQuery reader
+bq_reader = BigQueryReader(
+    project_id=config_loader.config_data['bigquery']['project_id'],
+    dataset_id=config_loader.config_data['bigquery']['dataset_id'],
+    table_name=config_loader.config_data['bigquery']['table_name']
+)
 
-# Get statistics
-stats = processor.get_processing_statistics()
-print(f"Total processed contacts: {stats['log_statistics']['total_contacts']}")
+# Initialize Supabase client
+supabase_client = SupabaseInsightsClient(config_loader.config_data)
+
+# Process contact...
+```
+
+## Project Structure
+
+```
+member-insights-processor-standalone/
+├── src/member_insights_processor/    # Main package
+│   ├── core/                         # Core business logic
+│   │   ├── llm/                      # LLM providers (OpenAI, Anthropic, Gemini)
+│   │   └── utils/                    # Shared utilities (logging, tokens, claims)
+│   ├── pipeline/                     # Orchestration and workflow
+│   │   ├── runner.py                 # Main pipeline runner
+│   │   ├── config.py                 # Configuration loader
+│   │   ├── context.py                # Context manager (token budgeting)
+│   │   └── filters.py                # Processing filter rules
+│   └── io/                           # All I/O boundaries
+│       ├── readers/                  # Data readers (BigQuery, Supabase)
+│       └── writers/                  # Data writers (Airtable, Supabase, Markdown)
+├── config/                           # Configuration files
+│   ├── config.yaml                   # Main configuration
+│   ├── processing_filters.yaml       # ENI type/subtype rules
+│   └── system_prompts/               # LLM prompt templates
+├── var/                              # Runtime artifacts (gitignored)
+│   ├── logs/                         # All log files
+│   │   ├── runs/                     # Run summary outputs
+│   │   └── claims/                   # Parallel processing claims
+│   └── output/                       # Generated outputs
+└── tests/                            # Test files
 ```
 
 ## Components
 
-### 1. BigQuery Connector
-- Connects to Google BigQuery
-- SQL-first filtering: queries per `(eni_source_type, eni_source_subtype)` with LEFT JOIN to processing log to exclude already processed ENIs
+### 1. BigQuery Reader ([io/readers/bigquery.py](src/member_insights_processor/io/readers/bigquery.py))
+- Connects to Google BigQuery with environment variable credentials
+- SQL-first filtering: queries per `(eni_source_type, eni_source_subtype)` with LEFT JOIN to processing log
 - Always processes `eni_source_subtype IS NULL` first, then explicit subtypes from `config/processing_filters.yaml`
-- Prevents reprocessing of already handled records via `elvis.eni_processing_log`
+- Prevents reprocessing via `elvis.eni_processing_log` table
+- Prioritized contact selection for batch processing
 
-### 2. Configuration Loader
-- Manages YAML configuration files
+### 2. Configuration Loader ([pipeline/config.py](src/member_insights_processor/pipeline/config.py))
+- Manages YAML configuration files (`config/config.yaml`, `config/processing_filters.yaml`)
 - Maps ENI types to context files
 - Handles system prompt configurations
+- Provides parallel processing configuration
 
-### 3. Multi-AI Processor
-- Supports Claude (Anthropic), Gemini Pro, and OpenAI
-- Processes member data with AI insights
-- Configurable AI provider selection
+### 3. Multi-AI Processor ([core/llm/](src/member_insights_processor/core/llm/))
+- **OpenAI** ([openai.py](src/member_insights_processor/core/llm/openai.py)) - GPT-4, GPT-5, o1 models
+- **Anthropic** ([anthropic.py](src/member_insights_processor/core/llm/anthropic.py)) - Claude 3.5, 3.7 models
+- **Gemini** ([gemini.py](src/member_insights_processor/core/llm/gemini.py)) - Gemini Pro, Flash models
+- Configurable AI provider selection via config
 
-### 4. Supabase Client
-- **NEW**: PostgreSQL JSONB storage for structured insights
+### 4. Context Manager ([pipeline/context.py](src/member_insights_processor/pipeline/context.py))
+- Token-budgeted context assembly per ENI group
+- Loads existing insights from Supabase (JSON format)
+- Renders system prompt templates with `{{variable}}` substitution
+- Enforces token limits and manages context windows
+- Four context variables: `current_structured_insight`, `eni_source_type_context`, `eni_source_subtype_context`, `new_data_to_process`
+
+### 5. Supabase Writer ([io/writers/supabase.py](src/member_insights_processor/io/writers/supabase.py))
+- PostgreSQL JSONB storage for structured insights
 - Intelligent upsert logic with automatic merging
-- Comprehensive CRUD operations with retry logic
+- Comprehensive retry logic and error handling
+- Versioning with `is_latest` flag and incremented `version` field
+- Consolidated ENI ID: `COMBINED-{contact_id}-ALL`
 
-### 5. Supabase Insights Processor
-- **NEW**: Memory-efficient processing pipeline
-- Loads existing insights before processing new data
-- Batch processing with configurable memory management
+### 6. Airtable Writer ([io/writers/airtable.py](src/member_insights_processor/io/writers/airtable.py))
+- Syncs structured insights to Airtable
+- Contact lookup and linking to master table (`tblkKWKRCEwl6aGDc`)
+- Creates note submission records
+- **Requirement**: Contact must exist in Airtable master table before sync
 
-### 6. Decoupled Airtable Writer
-- **UPDATED**: Pulls data from Supabase independently
-- Contact-specific syncing (no database flooding)
-- Supports both legacy and Supabase-powered workflows
+### 7. Parallel Processing ([core/utils/](src/member_insights_processor/core/utils/))
+- **Claims System** ([claims.py](src/member_insights_processor/core/utils/claims.py)) - File-based distributed locking to prevent duplicate processing
+- **Run Summary** ([run_summary.py](src/member_insights_processor/core/utils/run_summary.py)) - Event-driven observability system
+- ThreadPoolExecutor-based concurrent contact processing
+- Configurable worker count via `--max-concurrent-contacts`
 
-### 7. Schema & Validation
-- **NEW**: Pydantic v2 data models with comprehensive validation
-- Type-safe insight processing with automatic serialization
-- Migration utilities for existing data
-
-### 8. Processing Log (BigQuery)
+### 8. Processing Log Manager ([io/log_manager.py](src/member_insights_processor/io/log_manager.py))
 - Tracks processed ENI IDs in BigQuery table `elvis.eni_processing_log`
-- Excludes already processed items directly in SQL (warehouse-side)
-- Batch and single-record marking supported
-
-### 9. Legacy Local Log Manager (deprecated)
-- Previously tracked processed ENI IDs locally; replaced by BigQuery processing log
+- Batch marking of processed ENIs
+- Warehouse-side filtering to exclude already processed records
 
 ## Context Files
 
@@ -678,46 +729,55 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for comprehensive deployment instructio
 docker build -t member-insights-processor:latest --target production .
 
 # Test locally
-docker run --rm --env-file .env member-insights-processor:latest python src/main.py --validate
+docker run --rm --env-file .env member-insights-processor:latest python -m member_insights_processor.pipeline.runner --validate
 ```
 
 ## Recent Changes (October 2025)
 
+### Project Restructuring
+- **Package Structure**: Reorganized into clean `member_insights_processor` package hierarchy
+- **Core Modules**: `core/` (business logic), `pipeline/` (orchestration), `io/` (I/O boundaries)
+- **Runtime Artifacts**: Consolidated to `var/` directory (logs, outputs, claims)
+
+### Production Features
+- **Parallel Processing**: ThreadPoolExecutor-based concurrent processing with distributed locking
+- **Claims System**: File-based claims prevent duplicate processing across workers
+- **Run Summary**: Event-driven observability system for production runs
+- **Prioritized Selection**: SQL-based contact selection prioritizing never-processed contacts
+
+### Data Pipeline
 - **Standalone Repository**: Extracted from monorepo with full git history preserved
-- **Production-Ready Deployment**: Docker, Cloud Run, and GKE deployment configurations
-- **Comprehensive CI/CD**: GitHub Actions workflows for testing and deployment
-- Supabase-driven, single Airtable sync per contact after all ENI groups complete
-- Consolidated Supabase upserts under `eni_id = COMBINED-{contact_id}-ALL`
-- Append-only arrays: `eni_source_types`, `eni_source_subtypes`; single columns are no longer updated
-- Iterative counters: `total_eni_ids`, `record_count`; `version` increments on every update
-- Context 1 now provided as JSON (not markdown) to improve LLM adherence to structure
-- Robust insight parsing: JSON is preferred; markdown responses are parsed into JSON sections before upsert
-- Token-loss retry is disabled for versioned insights; outputs are accepted and versioned
-- Fully-rendered prompt usage with `ContextManager` and `{{variable}}` substitution
-- Debug LLM tracing for rendered prompts, token stats, and responses (see Debug LLM Tracing section)
+- **Supabase Integration**: PostgreSQL JSONB storage with intelligent upsert logic
+- **Consolidated ENI IDs**: `COMBINED-{contact_id}-ALL` for single record per contact
+- **Versioning**: `is_latest` flag and incremented `version` field
+- **Airtable Sync**: Decoupled post-processing that requires contacts in master table
 
-### CLI example (single contact, foreground)
+### AI Processing
+- **Context 1 JSON Format**: Existing insights provided as JSON (not markdown) for better LLM adherence
+- **Token Budgeting**: Per-ENI-group token limits with dynamic row allocation
+- **Debug Tracing**: Optional LLM trace logging for rendered prompts, token stats, and responses
+- **Multi-Provider Support**: OpenAI (GPT-4, GPT-5, o1), Anthropic (Claude 3.5, 3.7), Gemini
 
-```bash
-PYTHONPATH="src" python -m src.main --contact-id CNT-XXXXXXX --system-prompt structured_insight
-```
-
-### Token-loss report
-
-- Per-contact log line: `[TOKEN-LOSS] Summary for <contact_id>: events={n} | groups_skipped={m} | records_skipped={k}`
-- Single-contact console output now includes the same summary line
+### Developer Experience
+- **Updated Documentation**: Comprehensive onboarding guide and updated examples
+- **Docker Ready**: Production-optimized containerization
+- **Environment Variables**: All credentials via env vars (no JSON file mounting)
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+This is proprietary software owned by 3i Members. For contribution guidelines and development setup, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Internal team members:
+1. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Commit your changes (`git commit -m 'Add amazing feature'`)
+3. Push to the branch (`git push origin feature/amazing-feature`)
+4. Open a Pull Request
 
 ## License
 
-Copyright © 2025 3i Members. All rights reserved.
+Copyright © 2024-2025 3i Members. All rights reserved.
+
+This is proprietary and confidential software. See [LICENSE](LICENSE) for details.
 
 ## Support
 

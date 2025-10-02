@@ -4,59 +4,65 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Member Insights Processor is a Python-based AI pipeline that:
+Member Insights Processor is a production-ready Python-based AI pipeline that:
 1. Loads member data from BigQuery with SQL-first filtering to avoid reprocessing
 2. Generates structured insights using Claude/Gemini/OpenAI
 3. Stores results in Supabase (PostgreSQL JSONB) with intelligent upsert logic
 4. Optionally syncs to Airtable in a decoupled post-processing step
+5. Supports parallel processing with distributed locking for high-throughput production runs
 
 The system processes data in **per-ENI-group mode**: one LLM call per `(eni_source_type, eni_source_subtype)` combination with token-budgeted context.
+
+## Package Structure
+
+**Important**: The codebase was restructured into a clean package hierarchy. All code lives under `src/member_insights_processor/`:
+
+- `core/` - Business logic (LLM providers, utilities)
+- `pipeline/` - Orchestration (runner, config, context, filters)
+- `io/` - I/O boundaries (readers, writers)
+
+Always use fully qualified imports: `from member_insights_processor.pipeline.config import ConfigLoader`
 
 ## Common Commands
 
 ### Development
 ```bash
-# Always activate virtual environment first
+# Always activate virtual environment and set PYTHONPATH first
 source venv/bin/activate
+export PYTHONPATH=src
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Validate setup (checks env vars, connections, config)
-python src/main.py --validate
+python -m member_insights_processor.pipeline.runner --validate
 
 # Process single contact (recommended for testing)
-python src/main.py --contact-id CNT-ABC123 --limit 1
+python -m member_insights_processor.pipeline.runner --contact-id CNT-ABC123
 
-# Process with specific system prompt
-python src/main.py --contact-id CNT-ABC123 --system-prompt structured_insight
+# Process with parallel workers (production)
+python -m member_insights_processor.pipeline.runner --limit 100 --parallel --max-concurrent-contacts 5
 
 # Dry run (no database writes)
-python src/main.py --limit 5 --dry-run
+python -m member_insights_processor.pipeline.runner --limit 5 --dry-run
 
-# Check processing statistics
-python src/main.py --stats
+# View processing filter rules
+python -m member_insights_processor.pipeline.runner --show-filter
 ```
 
 ### Testing
 ```bash
-# Run all tests
-python tests/test_runner.py
+# Set PYTHONPATH
+export PYTHONPATH=src
 
-# Run component tests only (no external dependencies)
-python tests/test_runner.py --components-only
+# Run basic validation test
+python -m member_insights_processor.pipeline.runner --validate
 
-# Run integration tests (requires BigQuery, Supabase)
-python tests/test_runner.py --integration-only
+# Test with single contact
+python -m member_insights_processor.pipeline.runner --contact-id CNT-ABC123 --limit 1
 
-# Run specific test with verbose output
-python tests/test_runner.py --test test_components -vv
-
-# Test BigQuery processing filters
-python tests/test_processing_filters.py --contact-id CNT-ABC123 --verbose
-
-# Preview token-budgeted context (writes to logs/)
-pytest -q tests/test_context_preview.py
+# Test parallel processing with small batch
+python -m member_insights_processor.pipeline.runner --limit 10 --parallel --max-concurrent-contacts 3
 ```
 
 ### Supabase Operations
