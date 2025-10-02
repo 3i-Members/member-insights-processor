@@ -173,3 +173,7 @@ service-account*.json
 # Local development
 .env.local
 .env.*.local
+
+# AI Tools
+.cursor/
+.claude/

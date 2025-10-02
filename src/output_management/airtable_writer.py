@@ -1,16 +1,17 @@
 """
-Airtable Writer Module
+Structured Insights Airtable Writer
 
-This module handles syncing markdown files and AI-generated content
-to Airtable using the pyairtable library.
+This module handles syncing structured insight JSON data to Airtable with 
+specific field mapping and contact ID lookup functionality.
 """
 
 import os
-import re
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+import json
 import logging
+import time
+from datetime import datetime
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass
 
 try:
     from pyairtable import Table
@@ -22,489 +23,440 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class AirtableWriter:
-    """Handles writing markdown content and metadata to Airtable."""
-    
+@dataclass
+class StructuredSyncResult:
+    """Result of a structured insight sync operation."""
+    success: bool
+    record_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    master_record_id: Optional[str] = None
+    error: Optional[str] = None
+    created: bool = False
+    updated: bool = False
+
+
+class StructuredInsightsAirtableWriter:
+    """
+    Specialized Airtable writer for structured insights JSON data.
+
+    Features:
+    - Contact ID lookup and linking
+    - JSON to specific field mapping
+    - Content concatenation for note_content field
+    - Master record relationship management
+    - Rate limiting and retry logic for robust API interactions
+    """
+
     def __init__(
         self,
+        config: Dict[str, Any],
         api_key: Optional[str] = None,
-        base_id: Optional[str] = None,
-        table_id: Optional[str] = None
+        rate_limit_delay: float = 0.2,  # 5 requests per second
+        max_retries: int = 3
     ):
         """
-        Initialize the Airtable writer.
+        Initialize the structured insights Airtable writer.
 
         Args:
-            api_key: Airtable API key (if None, will try to get from environment)
-            base_id: Airtable base ID (if None, will try to get from environment)
-            table_id: Airtable table ID (if None, will try to get from environment)
+            config: Airtable configuration from config.yaml
+            api_key: Airtable API key (if None, will get from environment)
+            rate_limit_delay: Delay between requests (seconds)
+            max_retries: Maximum retry attempts for failed requests
         """
         if not PYAIRTABLE_AVAILABLE:
             logger.error("pyairtable library not available. Install with: pip install pyairtable")
-            self.table = None
+            self.connected = False
             return
 
         self.api_key = api_key or os.getenv('AIRTABLE_API_KEY')
-        self.base_id = base_id or os.getenv('AIRTABLE_BASE_ID')
-        self.table_id = table_id or os.getenv('AIRTABLE_TABLE_ID')
+        self.config = config
+        self.connected = False
+        self.rate_limit_delay = rate_limit_delay
+        self.max_retries = max_retries
+        self.last_request_time = 0
 
-        self.table = None
-        self._initialize_table()
+        # Initialize tables
+        self.note_submission_table = None
+        self.master_table = None
 
-    def _initialize_table(self) -> None:
-        """Initialize the Airtable table connection."""
+        # Cache for contact ID lookups
+        self._contact_cache = {}
+
+        self._initialize_connection()
+    
+    def _initialize_connection(self) -> bool:
+        """Initialize connections to Airtable tables."""
         try:
-            if not all([self.api_key, self.base_id, self.table_id]):
-                missing = []
-                if not self.api_key:
-                    missing.append("API key")
-                if not self.base_id:
-                    missing.append("base ID")
-                if not self.table_id:
-                    missing.append("table ID")
+            if not self.api_key:
+                logger.error("Missing Airtable API key")
+                return False
 
-                logger.error(f"Missing Airtable configuration: {', '.join(missing)}")
-                return
+            base_id = self.config['structured_insight']['base_id']
 
-            self.table = Table(self.api_key, self.base_id, self.table_id)
-            logger.info(f"Successfully initialized Airtable connection to table: {self.table_id}")
-            
+            # Initialize note submission table
+            note_table_id = self.config['structured_insight']['tables']['note_submission']['table_id']
+            self.note_submission_table = Table(self.api_key, base_id, note_table_id)
+
+            # Initialize master table
+            master_table_id = self.config['structured_insight']['tables']['master']['table_id']
+            self.master_table = Table(self.api_key, base_id, master_table_id)
+
+            self.connected = True
+            logger.info("Successfully connected to structured insights Airtable tables")
+            return True
+
         except Exception as e:
             logger.error(f"Failed to initialize Airtable connection: {str(e)}")
-            self.table = None
-    
-    def test_connection(self) -> bool:
-        """
-        Test the connection to Airtable.
-        
-        Returns:
-            bool: True if connection successful, False otherwise
-        """
-        try:
-            if not self.table:
-                return False
-            
-            # Try to fetch the first record to test connection
-            records = self.table.all(max_records=1)
-            logger.info("Airtable connection test successful")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Airtable connection test failed: {str(e)}")
+            self.connected = False
             return False
-    
-    def parse_markdown_metadata(self, markdown_content: str) -> Dict[str, Any]:
+
+    def _rate_limit(self):
+        """Enforce rate limiting between requests."""
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        if time_since_last < self.rate_limit_delay:
+            time.sleep(self.rate_limit_delay - time_since_last)
+        self.last_request_time = time.time()
+
+    def _retry_with_backoff(self, operation, *args, **kwargs):
         """
-        Parse YAML front matter from markdown content.
+        Retry an operation with exponential backoff.
+
+        Args:
+            operation: Function to retry
+            *args: Positional arguments for the operation
+            **kwargs: Keyword arguments for the operation
+
+        Returns:
+            Result of the operation
+
+        Raises:
+            Exception: If all retries fail
+        """
+        last_exception = None
+        for attempt in range(self.max_retries):
+            try:
+                self._rate_limit()
+                return operation(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                if attempt < self.max_retries - 1:
+                    wait_time = (2 ** attempt) * 0.5  # Exponential backoff: 0.5s, 1s, 2s
+                    logger.warning(f"Request failed (attempt {attempt + 1}/{self.max_retries}): {e}. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Request failed after {self.max_retries} attempts: {e}")
+
+        raise last_exception
+    
+    def _get_airtable_record_id(self, table: Table, field_id: str, value: str) -> Optional[str]:
+        """
+        Generic function to find an Airtable record ID by a field value.
+        Based on the shared logic from the other codebase.
         
         Args:
-            markdown_content: Full markdown content with metadata
+            table: Airtable table instance
+            field_id: Field ID to search in
+            value: Value to search for
             
         Returns:
-            Dict[str, Any]: Parsed metadata
+            Optional[str]: Record ID if found, None otherwise
         """
         try:
-            if not markdown_content.startswith('---\n'):
-                return {}
-            
-            # Split the content to extract front matter
-            parts = markdown_content.split('---\n', 2)
-            if len(parts) < 3:
-                return {}
-            
-            front_matter = parts[1]
-            metadata = {}
-            
-            # Simple YAML parsing for basic key-value pairs
-            for line in front_matter.split('\n'):
-                line = line.strip()
-                if ':' in line:
-                    key, value = line.split(':', 1)
-                    key = key.strip()
-                    value = value.strip()
-                    
-                    # Remove quotes if present
-                    if (value.startswith('"') and value.endswith('"')) or \
-                       (value.startswith("'") and value.endswith("'")):
-                        value = value[1:-1]
-                    
-                    # Convert basic types
-                    if value.lower() == 'null':
-                        value = None
-                    elif value.lower() == 'true':
-                        value = True
-                    elif value.lower() == 'false':
-                        value = False
-                    elif value.isdigit():
-                        value = int(value)
-                    
-                    metadata[key] = value
-            
-            return metadata
-            
+            formula = f"{{{field_id}}} = '{value}'"
+            record = table.first(formula=formula)
+            if record:
+                logger.info(f"Found existing record in table {table.name} where {field_id} = {value}. Record ID: {record['id']}")
+                return record['id']
+            logger.info(f"No record found in table {table.name} for value: {value}")
+            return None
         except Exception as e:
-            logger.error(f"Error parsing markdown metadata: {str(e)}")
-            return {}
+            logger.error(f"Error looking up Airtable record ID for value {value} in table {table.name}: {e}")
+            return None
     
-    def extract_content_from_markdown(self, markdown_content: str) -> str:
+    def find_master_record_by_contact_id(self, contact_id: str) -> Optional[str]:
         """
-        Extract the main content from markdown, excluding front matter.
+        Find the master record ID by contact ID.
         
         Args:
-            markdown_content: Full markdown content
+            contact_id: Contact ID to search for
             
         Returns:
-            str: Content without front matter
+            Optional[str]: Master record ID if found
         """
-        try:
-            if markdown_content.startswith('---\n'):
-                parts = markdown_content.split('---\n', 2)
-                if len(parts) >= 3:
-                    return parts[2].strip()
-            
-            return markdown_content.strip()
-            
-        except Exception as e:
-            logger.error(f"Error extracting content from markdown: {str(e)}")
-            return markdown_content
+        # Check cache first
+        if contact_id in self._contact_cache:
+            return self._contact_cache[contact_id]
+        
+        # Get field ID for contact_id lookup
+        contact_field_id = self.config['structured_insight']['tables']['master']['fields']['contact_id']
+        
+        # Find the record
+        master_record_id = self._get_airtable_record_id(
+            self.master_table, 
+            contact_field_id, 
+            contact_id
+        )
+        
+        # Cache the result
+        if master_record_id:
+            self._contact_cache[contact_id] = master_record_id
+        
+        return master_record_id
     
-    def prepare_airtable_record(
+    def process_structured_json(self, json_data: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Process structured JSON data into Airtable-ready format.
+        
+        Args:
+            json_data: Structured insight JSON data
+            
+        Returns:
+            Dict[str, str]: Processed data ready for Airtable
+        """
+        processed_data = {}
+        
+        # Concatenate personal, business, investing, and 3i for note_content
+        note_content_parts = []
+        for section in ['personal', 'business', 'investing', '3i']:
+            if section in json_data and json_data[section]:
+                formatted_content = self._format_markdown_for_airtable(json_data[section])
+                note_content_parts.append(f"**{section.title()}:**\n{formatted_content}")
+        
+        processed_data['note_content'] = "\n\n".join(note_content_parts)
+        
+        # Map deals and introductions directly (also format them)
+        if 'deals' in json_data and json_data['deals']:
+            processed_data['deals'] = self._format_markdown_for_airtable(json_data['deals'])
+        
+        if 'introductions' in json_data and json_data['introductions']:
+            processed_data['introductions'] = self._format_markdown_for_airtable(json_data['introductions'])
+        
+        return processed_data
+    
+    def _format_markdown_for_airtable(self, content: str) -> str:
+        """
+        Format markdown content for better display in Airtable.
+        Converts markdown sub-bullets to proper indentation.
+        
+        Args:
+            content: Markdown content with potential sub-bullets
+            
+        Returns:
+            str: Formatted content for Airtable
+        """
+        if not content:
+            return content
+        
+        lines = content.split('\n')
+        formatted_lines = []
+        
+        for line in lines:
+            # Check for citation sub-bullets with exact 2-space indentation
+            if line.startswith('  * ['):
+                # This is a citation sub-bullet, format with proper indentation
+                citation_text = line[4:]  # Remove '  * '
+                formatted_lines.append(f"    {citation_text}")
+            elif line.startswith('  *') and not line.startswith('  * ['):
+                # Regular sub-bullet, add indentation
+                sub_bullet_text = line[4:]  # Remove '  * '
+                formatted_lines.append(f"    • {sub_bullet_text}")
+            else:
+                # Keep regular lines as-is
+                formatted_lines.append(line)
+        
+        return '\n'.join(formatted_lines)
+    
+    def create_note_submission_record(
         self,
-        markdown_content: str,
-        field_mapping: Dict[str, str],
-        additional_fields: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        contact_id: str,
+        structured_json: Dict[str, Any],
+        member_name: Optional[str] = None
+    ) -> StructuredSyncResult:
         """
-        Prepare a record for Airtable from markdown content.
+        Create a note submission record with structured insight data.
         
         Args:
-            markdown_content: Full markdown content with metadata
-            field_mapping: Mapping of data fields to Airtable field names
-            additional_fields: Additional field values to include
+            contact_id: Contact ID to link to
+            structured_json: Structured insight JSON data
+            member_name: Optional member name for logging
             
         Returns:
-            Dict[str, Any]: Prepared Airtable record
+            StructuredSyncResult: Result of the sync operation
         """
-        try:
-            # Parse metadata and content
-            metadata = self.parse_markdown_metadata(markdown_content)
-            content = self.extract_content_from_markdown(markdown_content)
-            
-            # Start building the record
-            record = {}
-            
-            # Apply field mapping
-            for source_field, airtable_field in field_mapping.items():
-                if source_field == 'content':
-                    record[airtable_field] = content
-                elif source_field in metadata:
-                    record[airtable_field] = metadata[source_field]
-            
-            # Add additional fields
-            if additional_fields:
-                record.update(additional_fields)
-            
-            # Add default fields if not present
-            if 'Last Updated' in field_mapping.values() and 'Last Updated' not in record:
-                record['Last Updated'] = datetime.now().isoformat()
-            
-            return record
-            
-        except Exception as e:
-            logger.error(f"Error preparing Airtable record: {str(e)}")
-            return {}
-    
-    def find_existing_record(self, contact_id: str, contact_id_field: str = "Contact ID") -> Optional[Dict[str, Any]]:
-        """
-        Find an existing record by contact ID.
+        if not self.connected:
+            return StructuredSyncResult(
+                success=False,
+                contact_id=contact_id,
+                error="Not connected to Airtable"
+            )
         
-        Args:
-            contact_id: The contact ID to search for
-            contact_id_field: The Airtable field name for contact ID
-            
-        Returns:
-            Optional[Dict[str, Any]]: Existing record if found, None otherwise
-        """
         try:
-            if not self.table:
-                return None
+            # Find master record
+            master_record_id = self.find_master_record_by_contact_id(contact_id)
+            if not master_record_id:
+                return StructuredSyncResult(
+                    success=False,
+                    contact_id=contact_id,
+                    error=f"No master record found for contact ID: {contact_id}"
+                )
             
-            # Search for records with matching contact ID
-            formula = f"{{{contact_id_field}}} = '{contact_id}'"
-            records = self.table.all(formula=formula)
+            # Process the JSON data
+            processed_data = self.process_structured_json(structured_json)
             
-            if records:
-                logger.debug(f"Found existing record for contact ID: {contact_id}")
-                return records[0]  # Return the first match
+            # Get field mappings
+            fields = self.config['structured_insight']['tables']['note_submission']['fields']
             
-            return None
+            # Build the record data
+            record_data = {
+                fields['find_by_contact_lookup']: [master_record_id],  # Link to master record
+                fields['note_submission_type']: self.config['structured_insight']['tables']['note_submission']['status_column_value']['elvis']
+            }
             
-        except Exception as e:
-            logger.error(f"Error finding existing record: {str(e)}")
-            return None
-    
-    def create_record(self, record_data: Dict[str, Any]) -> Optional[str]:
-        """
-        Create a new record in Airtable.
-        
-        Args:
-            record_data: Data for the new record
+            # Add processed content
+            if 'note_content' in processed_data:
+                record_data[fields['note_content']] = processed_data['note_content']
             
-        Returns:
-            Optional[str]: Record ID if successful, None otherwise
-        """
-        try:
-            if not self.table:
-                logger.error("Airtable table not initialized")
-                return None
+            if 'deals' in processed_data:
+                record_data[fields['deals']] = processed_data['deals']
             
-            created_record = self.table.create(record_data)
-            record_id = created_record['id']
+            if 'introductions' in processed_data:
+                record_data[fields['introductions']] = processed_data['introductions']
             
-            logger.info(f"Successfully created Airtable record: {record_id}")
-            return record_id
+            # Create the record with retry logic
+            created_record = self._retry_with_backoff(
+                self.note_submission_table.create,
+                record_data
+            )
+
+            logger.info(f"Created note submission record for {contact_id} ({member_name}): {created_record['id']}")
             
-        except Exception as e:
-            logger.error(f"Error creating Airtable record: {str(e)}")
-            return None
-    
-    def update_record(self, record_id: str, record_data: Dict[str, Any]) -> bool:
-        """
-        Update an existing record in Airtable.
-        
-        Args:
-            record_id: ID of the record to update
-            record_data: Data to update
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            if not self.table:
-                logger.error("Airtable table not initialized")
-                return False
-            
-            self.table.update(record_id, record_data)
-            logger.info(f"Successfully updated Airtable record: {record_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error updating Airtable record: {str(e)}")
-            return False
-    
-    def sync_markdown_file(
-        self,
-        markdown_file_path: str,
-        field_mapping: Dict[str, str],
-        additional_fields: Optional[Dict[str, Any]] = None,
-        contact_id_field: str = "Contact ID"
-    ) -> Optional[str]:
-        """
-        Sync a markdown file to Airtable.
-        
-        Args:
-            markdown_file_path: Path to the markdown file
-            field_mapping: Mapping of data fields to Airtable field names
-            additional_fields: Additional field values
-            contact_id_field: Airtable field name for contact ID
-            
-        Returns:
-            Optional[str]: Record ID if successful, None otherwise
-        """
-        try:
-            # Read markdown file
-            file_path = Path(markdown_file_path)
-            if not file_path.exists():
-                logger.error(f"Markdown file not found: {markdown_file_path}")
-                return None
-            
-            with open(file_path, 'r', encoding='utf-8') as f:
-                markdown_content = f.read()
-            
-            # Prepare record data
-            record_data = self.prepare_airtable_record(
-                markdown_content=markdown_content,
-                field_mapping=field_mapping,
-                additional_fields=additional_fields
+            return StructuredSyncResult(
+                success=True,
+                record_id=created_record['id'],
+                contact_id=contact_id,
+                master_record_id=master_record_id,
+                created=True
             )
             
-            if not record_data:
-                logger.error("Failed to prepare record data from markdown")
-                return None
-            
-            # Check if record exists
-            contact_id = record_data.get(contact_id_field)
-            if contact_id:
-                existing_record = self.find_existing_record(contact_id, contact_id_field)
-                
-                if existing_record:
-                    # Update existing record
-                    success = self.update_record(existing_record['id'], record_data)
-                    return existing_record['id'] if success else None
-                else:
-                    # Create new record
-                    return self.create_record(record_data)
-            else:
-                # No contact ID, always create new record
-                return self.create_record(record_data)
-                
         except Exception as e:
-            logger.error(f"Error syncing markdown file to Airtable: {str(e)}")
-            return None
+            error_msg = f"Failed to create note submission record for {contact_id}: {str(e)}"
+            logger.error(error_msg)
+            return StructuredSyncResult(
+                success=False,
+                contact_id=contact_id,
+                error=error_msg
+            )
     
-    def sync_content_directly(
+    def sync_structured_insights_batch(
         self,
-        content: str,
-        contact_id: str,
-        eni_id: str,
-        field_mapping: Dict[str, str],
-        additional_fields: Optional[Dict[str, Any]] = None,
-        contact_id_field: str = "Contact ID"
-    ) -> Optional[str]:
+        insights_data: List[Dict[str, Any]],
+        show_progress: bool = True
+    ) -> Dict[str, Any]:
         """
-        Sync content directly to Airtable without a file.
+        Sync multiple structured insights to Airtable.
         
         Args:
-            content: The content to sync
-            contact_id: Contact ID
-            eni_id: ENI ID
-            field_mapping: Mapping of data fields to Airtable field names
-            additional_fields: Additional field values
-            contact_id_field: Airtable field name for contact ID
+            insights_data: List of insight data with contact_id and json_data
+            show_progress: Whether to show progress updates
             
         Returns:
-            Optional[str]: Record ID if successful, None otherwise
+            Dict[str, Any]: Batch sync results
         """
-        try:
-            # Build record data
-            record_data = {}
+        results = {
+            'total_records': len(insights_data),
+            'successful': 0,
+            'failed': 0,
+            'errors': [],
+            'created_records': [],
+            'start_time': datetime.now().isoformat()
+        }
+        
+        if not self.connected:
+            results['errors'].append("Not connected to Airtable")
+            results['end_time'] = datetime.now().isoformat()
+            return results
+        
+        logger.info(f"Starting batch sync of {len(insights_data)} structured insights")
+        
+        for i, insight_data in enumerate(insights_data, 1):
+            if show_progress and i % 5 == 0:
+                logger.info(f"Processing insight {i}/{len(insights_data)}")
             
-            # Apply field mapping
-            for source_field, airtable_field in field_mapping.items():
-                if source_field == 'content':
-                    record_data[airtable_field] = content
-                elif source_field == 'contact_id':
-                    record_data[airtable_field] = contact_id
-                elif source_field == 'eni_id':
-                    record_data[airtable_field] = eni_id
+            contact_id = insight_data.get('contact_id')
+            json_data = insight_data.get('json_data', {})
+            member_name = insight_data.get('member_name', 'Unknown')
             
-            # Add additional fields
-            if additional_fields:
-                record_data.update(additional_fields)
+            if not contact_id:
+                error_msg = f"Missing contact_id in insight data #{i}"
+                results['errors'].append(error_msg)
+                results['failed'] += 1
+                continue
             
-            # Add timestamps
-            record_data['Last Updated'] = datetime.now().isoformat()
+            sync_result = self.create_note_submission_record(
+                contact_id=contact_id,
+                structured_json=json_data,
+                member_name=member_name
+            )
             
-            # Check if record exists
-            existing_record = self.find_existing_record(contact_id, contact_id_field)
-            
-            if existing_record:
-                # Update existing record
-                success = self.update_record(existing_record['id'], record_data)
-                return existing_record['id'] if success else None
+            if sync_result.success:
+                results['successful'] += 1
+                results['created_records'].append(sync_result.record_id)
             else:
-                # Create new record
-                return self.create_record(record_data)
-                
-        except Exception as e:
-            logger.error(f"Error syncing content directly to Airtable: {str(e)}")
-            return None
-    
-    def batch_sync_files(
-        self,
-        file_paths: List[str],
-        field_mapping: Dict[str, str],
-        additional_fields: Optional[Dict[str, Any]] = None,
-        contact_id_field: str = "Contact ID"
-    ) -> Dict[str, Optional[str]]:
-        """
-        Sync multiple markdown files to Airtable in batch.
+                results['failed'] += 1
+                results['errors'].append(f"Contact {contact_id}: {sync_result.error}")
         
-        Args:
-            file_paths: List of markdown file paths
-            field_mapping: Mapping of data fields to Airtable field names
-            additional_fields: Additional field values
-            contact_id_field: Airtable field name for contact ID
-            
-        Returns:
-            Dict[str, Optional[str]]: Mapping of file paths to record IDs
-        """
-        results = {}
-        
-        for file_path in file_paths:
-            try:
-                record_id = self.sync_markdown_file(
-                    markdown_file_path=file_path,
-                    field_mapping=field_mapping,
-                    additional_fields=additional_fields,
-                    contact_id_field=contact_id_field
-                )
-                results[file_path] = record_id
-                
-                # Add small delay to avoid rate limiting
-                import time
-                time.sleep(0.2)
-                
-            except Exception as e:
-                logger.error(f"Error syncing file {file_path}: {str(e)}")
-                results[file_path] = None
+        results['end_time'] = datetime.now().isoformat()
+        logger.info(f"Batch sync completed: {results['successful']} successful, {results['failed']} failed")
         
         return results
     
-    def get_table_info(self) -> Dict[str, Any]:
-        """
-        Get information about the Airtable table.
+    def test_connection(self) -> Dict[str, Any]:
+        """Test the Airtable connection and return status."""
+        result = {
+            'connected': self.connected,
+            'note_submission_table': False,
+            'master_table': False,
+            'api_configured': bool(self.api_key),
+            'error': None
+        }
         
-        Returns:
-            Dict[str, Any]: Table information
-        """
+        if not self.connected:
+            result['error'] = "Not connected to Airtable"
+            return result
+        
         try:
-            info = {
-                'api_configured': bool(self.api_key),
-                'base_id': self.base_id,
-                'table_id': self.table_id,
-                'table_initialized': bool(self.table),
-                'connection_test': False,
-                'record_count': None
-            }
+            # Test note submission table
+            if self.note_submission_table:
+                self.note_submission_table.all(max_records=1)
+                result['note_submission_table'] = True
             
-            if self.table:
-                info['connection_test'] = self.test_connection()
-                
-                # Try to get record count
-                try:
-                    records = self.table.all(max_records=1)
-                    # Note: This doesn't give actual count, just tests if we can fetch
-                    info['can_read_records'] = True
-                except Exception:
-                    info['can_read_records'] = False
+            # Test master table
+            if self.master_table:
+                self.master_table.all(max_records=1)
+                result['master_table'] = True
             
-            return info
+            logger.info("Structured insights Airtable connection test successful")
             
         except Exception as e:
-            return {
-                'api_configured': False,
-                'table_initialized': False,
-                'connection_test': False,
-                'error': str(e)
-            }
+            result['error'] = str(e)
+            logger.error(f"Structured insights Airtable connection test failed: {str(e)}")
+        
+        return result
 
 
-def create_airtable_writer(
-    api_key: Optional[str] = None,
-    base_id: Optional[str] = None,
-    table_id: Optional[str] = None
-) -> AirtableWriter:
+def create_structured_airtable_writer(
+    config: Dict[str, Any],
+    api_key: Optional[str] = None
+) -> StructuredInsightsAirtableWriter:
     """
-    Factory function to create an AirtableWriter instance.
-
-
+    Factory function to create a structured insights Airtable writer.
+    
     Args:
-        api_key: Optional API key (will use environment variable if not provided)
-        base_id: Optional base ID (will use environment variable if not provided)
-        table_id: Optional table ID (will use environment variable if not provided)
-
+        config: Airtable configuration
+        api_key: Airtable API key
+        
     Returns:
-        AirtableWriter: Configured writer instance
+        StructuredInsightsAirtableWriter: Configured writer
     """
-    return AirtableWriter(api_key=api_key, base_id=base_id, table_id=table_id) 
+    return StructuredInsightsAirtableWriter(config=config, api_key=api_key) 

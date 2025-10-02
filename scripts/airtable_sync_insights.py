@@ -26,8 +26,8 @@ if str(PROJECT_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from data_processing.supabase_client import SupabaseInsightsClient
-from output_management.structured_airtable_writer import StructuredInsightsAirtableWriter
-from output_management.supabase_airtable_writer import SupabaseAirtableSync
+from output_management.airtable_writer import StructuredInsightsAirtableWriter
+from output_management.supabase_airtable_sync import SupabaseAirtableSync
 from dotenv import load_dotenv
 import yaml
 

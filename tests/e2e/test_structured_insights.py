@@ -130,7 +130,7 @@ class TestStructuredAirtableWriter(unittest.TestCase):
 
     def test_json_processing(self):
         """Test processing of structured JSON data."""
-        from output_management.structured_airtable_writer import create_structured_airtable_writer
+        from output_management.airtable_writer import create_structured_airtable_writer
         
         # Mock the writer since we don't have real Airtable credentials
         with patch('output_management.structured_airtable_writer.Table'):

@@ -39,14 +39,12 @@ from ai_processing.gemini_processor import create_gemini_processor
 from ai_processing.openai_processor import create_openai_processor
 from ai_processing.anthropic_processor import AnthropicProcessor
 from output_management.markdown_writer import create_markdown_writer
-from output_management.airtable_writer import create_airtable_writer
-from output_management.enhanced_airtable_writer import create_enhanced_airtable_writer
 from output_management.json_writer import create_json_writer
-from output_management.structured_airtable_writer import create_structured_airtable_writer
+from output_management.airtable_writer import create_structured_airtable_writer
 from utils.enhanced_logger import create_enhanced_logger
 from utils.token_utils import estimate_tokens
 from output_management.markdown_writer import LLMTraceWriter
-from output_management.supabase_airtable_writer import SupabaseAirtableSync
+from output_management.supabase_airtable_sync import SupabaseAirtableSync
 
 # Configure logging
 logging.basicConfig(
@@ -151,19 +149,12 @@ class MemberInsightsProcessor:
             
             # Initialize markdown writer
             self.markdown_writer = create_markdown_writer()
-            
-            # Initialize enhanced Airtable writer (optional)
-            airtable_config = self.context_manager.get_airtable_config()
-            if airtable_config:
-                self.airtable_writer = create_enhanced_airtable_writer()
-            else:
-                # Try to initialize with environment variables
-                self.airtable_writer = create_enhanced_airtable_writer()
-            
+
             # Initialize JSON writer for structured insights
             self.json_writer = create_json_writer()
-            
-            # Initialize structured Airtable writer (optional)
+
+            # Initialize Airtable writer for structured insights (optional)
+            airtable_config = self.context_manager.get_airtable_config()
             if airtable_config:
                 self.structured_airtable_writer = create_structured_airtable_writer(
                     config=airtable_config

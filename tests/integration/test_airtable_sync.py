@@ -43,8 +43,8 @@ def test_airtable_sync_from_supabase(contact_id: str):
         
         # Import required components
         from data_processing.supabase_client import SupabaseInsightsClient
-        from output_management.supabase_airtable_writer import SupabaseAirtableSync
-        from output_management.structured_airtable_writer import create_structured_airtable_writer
+        from output_management.supabase_airtable_sync import SupabaseAirtableSync
+        from output_management.airtable_writer import create_structured_airtable_writer
         from context_management.config_loader import create_config_loader
         
         print("📝 Initializing components...")

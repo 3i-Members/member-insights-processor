@@ -194,8 +194,8 @@ print(f"Processed {state.get_summary()['total_processed']} insights")
 ### Airtable Sync (Decoupled)
 
 ```python
-from src.output_management.supabase_airtable_writer import SupabaseAirtableSync
-from src.output_management.structured_airtable_writer import StructuredInsightsAirtableWriter
+from src.output_management.supabase_airtable_sync import SupabaseAirtableSync
+from src.output_management.airtable_writer import StructuredInsightsAirtableWriter
 
 # Initialize sync service
 airtable_writer = StructuredInsightsAirtableWriter(config)

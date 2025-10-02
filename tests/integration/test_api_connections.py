@@ -20,8 +20,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from data_processing.bigquery_connector import create_bigquery_connector
 from context_management.config_loader import create_config_loader
 from ai_processing.gemini_processor import create_gemini_processor
-from output_management.enhanced_airtable_writer import create_enhanced_airtable_writer
-from output_management.structured_airtable_writer import create_structured_airtable_writer
+# Removed: enhanced_airtable_writer - now consolidated into airtable_writer import create_enhanced_airtable_writer
+from output_management.airtable_writer import create_structured_airtable_writer
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

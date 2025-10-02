@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from data_processing.supabase_client import SupabaseInsightsClient, SupabaseOperationError
 from data_processing.schema import StructuredInsight, ProcessingStatus
-from output_management.structured_airtable_writer import StructuredInsightsAirtableWriter
+from output_management.airtable_writer import StructuredInsightsAirtableWriter
 
 logger = logging.getLogger(__name__)
 
