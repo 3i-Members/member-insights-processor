@@ -18,15 +18,22 @@ from uuid import uuid4
 import threading
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent.parent / ".env"
-if not env_path.exists():
-    # Try parent directory
-    env_path = Path(__file__).parent.parent.parent / ".env"
+# Try multiple locations: project root, src/, src/member_insights_processor/
+env_paths = [
+    Path(__file__).parent.parent.parent.parent / ".env",  # Project root
+    Path(__file__).parent.parent.parent / ".env",         # src/
+    Path(__file__).parent.parent / ".env",                # src/member_insights_processor/
+]
 
-if env_path.exists():
-    load_dotenv(env_path)
-    print(f"✅ Loaded environment variables from: {env_path}")
-else:
+env_loaded = False
+for env_path in env_paths:
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Loaded environment variables from: {env_path}")
+        env_loaded = True
+        break
+
+if not env_loaded:
     print("⚠️  No .env file found, using system environment variables")
 
 # Import all components
