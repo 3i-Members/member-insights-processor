@@ -60,7 +60,9 @@ class LocalFileClaimer:
             logger.warning(f"[CLAIM] release error for {key}: {e}")
 
 
-def create_local_claimer(enabled: bool = True, base_dir: Optional[str] = None) -> Optional[LocalFileClaimer]:
+def create_local_claimer(
+    enabled: bool = True, base_dir: Optional[str] = None
+) -> Optional[LocalFileClaimer]:
     if not enabled:
         return None
     return LocalFileClaimer(base_dir or "var/logs/claims")

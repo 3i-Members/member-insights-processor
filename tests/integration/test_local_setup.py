@@ -32,7 +32,7 @@ def test_configuration():
     print(f"   ✅ BigQuery project: {bq_config.get('project_id')}")
 
     # Test AI config
-    ai_provider = config_loader.get_processing_config().get('ai_provider')
+    ai_provider = config_loader.get_processing_config().get("ai_provider")
     print(f"   ✅ AI provider: {ai_provider}")
 
     # Test system prompts (just verify config loads)
@@ -71,7 +71,7 @@ def test_context_manager():
 
     # Test config validation
     validation = cm.validate_configuration()
-    if validation['valid']:
+    if validation["valid"]:
         print(f"   ✅ Configuration validation passed")
     else:
         print(f"   ⚠️  Configuration warnings: {len(validation['warnings'])}")
@@ -86,13 +86,15 @@ def test_processing_filters():
     pf = create_processing_filter("config/processing_filters.yaml")
 
     # Access processing rules
-    if hasattr(pf, 'processing_rules'):
+    if hasattr(pf, "processing_rules"):
         rules = pf.processing_rules
-        total_types = len(rules.get('eni_processing_rules', {}))
+        total_types = len(rules.get("eni_processing_rules", {}))
         print(f"   ✅ ENI types in filter rules: {total_types}")
 
         # Show first few rules
-        for i, (eni_type, subtypes) in enumerate(list(rules.get('eni_processing_rules', {}).items())[:3]):
+        for i, (eni_type, subtypes) in enumerate(
+            list(rules.get("eni_processing_rules", {}).items())[:3]
+        ):
             subtype_count = len(subtypes) if subtypes else 0
             print(f"      {i+1}. {eni_type}: {subtype_count} subtype(s)")
     else:
@@ -142,7 +144,7 @@ def test_schema_validation():
         eni_source_subtypes=["biography", "investing_preferences"],
         generator="structured_insight",
         record_count=5,
-        total_eni_ids=10
+        total_eni_ids=10,
     )
     print(f"   ✅ Metadata validation passed")
     print(f"      Contact: {metadata.contact_id}")
@@ -160,12 +162,12 @@ def test_token_estimation():
     test_texts = [
         "Short text",
         "Medium length text with more words and complexity",
-        "Very long text " * 100
+        "Very long text " * 100,
     ]
 
     for text in test_texts:
         tokens = estimate_tokens(text)
-        ratio = tokens/len(text) if len(text) > 0 else 0
+        ratio = tokens / len(text) if len(text) > 0 else 0
         print(f"   ✅ {len(text):4d} chars → {tokens:4d} tokens (ratio: {ratio:.3f})")
 
     return True
@@ -177,19 +179,25 @@ def test_environment():
 
     # Check Google Cloud components
     gcp_components = [
-        'GCP_PROJECT_ID',
-        'GCP_PRIVATE_KEY_ID',
-        'GCP_PRIVATE_KEY',
-        'GCP_CLIENT_EMAIL',
-        'GCP_CLIENT_ID'
+        "GCP_PROJECT_ID",
+        "GCP_PRIVATE_KEY_ID",
+        "GCP_PRIVATE_KEY",
+        "GCP_CLIENT_EMAIL",
+        "GCP_CLIENT_ID",
     ]
 
-    gcp_configured = all(os.getenv(comp) and not os.getenv(comp).startswith("your-") for comp in gcp_components)
+    gcp_configured = all(
+        os.getenv(comp) and not os.getenv(comp).startswith("your-") for comp in gcp_components
+    )
 
     if gcp_configured:
         print(f"   ✅ Google Cloud credentials: all 5 components configured")
     else:
-        missing = [comp for comp in gcp_components if not os.getenv(comp) or os.getenv(comp).startswith("your-")]
+        missing = [
+            comp
+            for comp in gcp_components
+            if not os.getenv(comp) or os.getenv(comp).startswith("your-")
+        ]
         print(f"   ❌ Google Cloud credentials: missing {len(missing)}/5 components")
         for comp in missing[:3]:  # Show first 3 missing
             print(f"      - {comp}")
@@ -197,21 +205,26 @@ def test_environment():
             print(f"      ... and {len(missing) - 3} more")
 
     # Check AI provider
-    has_ai = any([
-        os.getenv("OPENAI_API_KEY") and not os.getenv("OPENAI_API_KEY").startswith("your-"),
-        os.getenv("ANTHROPIC_API_KEY") and not os.getenv("ANTHROPIC_API_KEY").startswith("your-"),
-        os.getenv("GEMINI_API_KEY") and not os.getenv("GEMINI_API_KEY").startswith("your-")
-    ])
+    has_ai = any(
+        [
+            os.getenv("OPENAI_API_KEY") and not os.getenv("OPENAI_API_KEY").startswith("your-"),
+            os.getenv("ANTHROPIC_API_KEY")
+            and not os.getenv("ANTHROPIC_API_KEY").startswith("your-"),
+            os.getenv("GEMINI_API_KEY") and not os.getenv("GEMINI_API_KEY").startswith("your-"),
+        ]
+    )
     if has_ai:
         print(f"   ✅ AI provider API key: configured")
     else:
-        print(f"   ⚠️  No AI provider configured (set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY)")
+        print(
+            f"   ⚠️  No AI provider configured (set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY)"
+        )
 
     # Check optional vars
     optional_vars = {
         "SUPABASE_URL": "Supabase project URL",
         "SUPABASE_SERVICE_ROLE_KEY": "Supabase service role key",
-        "AIRTABLE_API_KEY": "Airtable API key"
+        "AIRTABLE_API_KEY": "Airtable API key",
     }
 
     for var, desc in optional_vars.items():
@@ -237,7 +250,7 @@ def main():
         ("Processing Filters", test_processing_filters),
         ("Supabase Connection", test_supabase),
         ("Schema Validation", test_schema_validation),
-        ("Token Estimation", test_token_estimation)
+        ("Token Estimation", test_token_estimation),
     ]
 
     results = {}
@@ -248,6 +261,7 @@ def main():
         except Exception as e:
             print(f"\n   ❌ {name} test failed: {e}")
             import traceback
+
             traceback.print_exc()
             results[name] = False
 

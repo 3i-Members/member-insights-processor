@@ -15,7 +15,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from context_management.context_manager import ContextManager
+from member_insights_processor.pipeline.context import ContextManager
 from tests import DEFAULT_CONTACT_ID, DEFAULT_STRUCTURED_INSIGHT
 
 
@@ -89,8 +89,13 @@ def test_context_preview_log_generation():
     connected = False
     bq = None
     try:
-        from data_processing.bigquery_connector import create_bigquery_connector
-        bq = create_bigquery_connector(ctx_manager.config_data)
+        from member_insights_processor.io.readers.bigquery import BigQueryReader
+
+        bq = BigQueryReader(
+            project_id=ctx_manager.config_data['bigquery']['project_id'],
+            dataset_id=ctx_manager.config_data['bigquery']['dataset_id'],
+            table_name=ctx_manager.config_data['bigquery']['table_name']
+        )
         connected = bq.connect()
     except Exception:
         connected = False
@@ -100,8 +105,13 @@ def test_context_preview_log_generation():
         # Pull all data for this contact (we mimic current pipeline by pulling per type/subtype combos)
         # For preview, fetch combinations from config's processing filter like the main pipeline
         try:
-            from context_management.processing_filter import create_processing_filter
-            filter_file = ctx_manager.config_data.get("processing", {}).get("filter_config", {}).get("default_filter_file")
+            from member_insights_processor.pipeline.filters import ProcessingFilter
+
+            filter_file = (
+                ctx_manager.config_data.get("processing", {})
+                .get("filter_config", {})
+                .get("default_filter_file")
+            )
             processing_filter = create_processing_filter(filter_file) if filter_file else None
             rules = processing_filter.processing_rules if processing_filter else {}
         except Exception:
@@ -109,7 +119,7 @@ def test_context_preview_log_generation():
         combos = bq.get_eni_combinations_for_processing(rules)
 
         all_dfs = []
-        for (eni_type, eni_subtype) in combos:
+        for eni_type, eni_subtype in combos:
             try:
                 df = bq.load_contact_data_filtered(contact_id, eni_type, eni_subtype)
                 if not df.empty:
@@ -126,9 +136,9 @@ def test_context_preview_log_generation():
     # Normalize subtype like the main pipeline
     if "eni_source_subtype" in contact_df.columns:
         contact_df["eni_source_subtype"] = contact_df["eni_source_subtype"].fillna("null")
-        mask = (
-            contact_df["eni_source_subtype"].astype(str).str.strip() == ""
-        ) | contact_df["eni_source_subtype"].astype(str).str.lower().isin(["none", "nan", "nat"])
+        mask = (contact_df["eni_source_subtype"].astype(str).str.strip() == "") | contact_df[
+            "eni_source_subtype"
+        ].astype(str).str.lower().isin(["none", "nan", "nat"])
         contact_df.loc[mask, "eni_source_subtype"] = "null"
 
     # Group and build per-group context variables
@@ -143,15 +153,19 @@ def test_context_preview_log_generation():
             eni_group_df=group_df,
             system_prompt_key="structured_insight",
         )
-        per_group_results.append({
-            "eni_source_type": eni_type,
-            "eni_source_subtype": eni_subtype,
-            "rows_in_group": len(group_df),
-            "context_variables": ctx_vars,
-        })
+        per_group_results.append(
+            {
+                "eni_source_type": eni_type,
+                "eni_source_subtype": eni_subtype,
+                "rows_in_group": len(group_df),
+                "context_variables": ctx_vars,
+            }
+        )
 
     # Compose preview log content
-    current_structured_insight = ctx_manager.get_current_structured_insight(contact_id, "structured_insight")
+    current_structured_insight = ctx_manager.get_current_structured_insight(
+        contact_id, "structured_insight"
+    )
     llm_calls = len(per_group_results)  # One call per group in a batched-per-group strategy
 
     lines = []
@@ -160,7 +174,9 @@ def test_context_preview_log_generation():
     lines.append(f"LLM calls (would-be): {llm_calls}\n\n")
 
     # Summary table header
-    lines.append("run_number | eni_source_type | eni_source_sub_type | tokens_system_plus_source_ctx | remaining_tokens | total_rows_in_group | rows_processed | total_tokens_rendered\n")
+    lines.append(
+        "run_number | eni_source_type | eni_source_sub_type | tokens_system_plus_source_ctx | remaining_tokens | total_rows_in_group | rows_processed | total_tokens_rendered\n"
+    )
     lines.append("--- | --- | --- | --- | --- | --- | --- | ---\n")
 
     # Build summary rows first
@@ -182,7 +198,9 @@ def test_context_preview_log_generation():
     for idx, result in enumerate(per_group_results, 1):
         ctxv = result["context_variables"]
         token_stats = ctxv.get("token_stats", {})
-        lines.append(f"=== Call {idx}: {result['eni_source_type']}/{result['eni_source_subtype']} ===\n")
+        lines.append(
+            f"=== Call {idx}: {result['eni_source_type']}/{result['eni_source_subtype']} ===\n"
+        )
         lines.append(f"Rows in group: {result['rows_in_group']}\n")
         lines.append("-- Rendered System Prompt (Full) --\n")
         rendered = ctxv.get("rendered_system_prompt", "").strip()
@@ -208,4 +226,4 @@ def test_context_preview_log_generation():
     assert "ENI-" in content, "Rendered prompt is missing ENI citations"
 
     # Print location for convenience when running tests locally
-    print(f"Context preview log written to: {log_path}") 
+    print(f"Context preview log written to: {log_path}")

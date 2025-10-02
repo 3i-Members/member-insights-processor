@@ -33,11 +33,13 @@ class RunSummaryWriter:
         self.summary_json_path = self.run_dir / "summary.json"
 
         # Minimal run metadata header
-        self.append_event({
-            "event": "run_initialized",
-            "run_id": self.run_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-        })
+        self.append_event(
+            {
+                "event": "run_initialized",
+                "run_id": self.run_id,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+            }
+        )
 
     def append_event(self, event: Dict[str, Any]) -> None:
         """Append an event to the NDJSON stream with an auto timestamp and run_id."""
@@ -59,11 +61,13 @@ class RunSummaryWriter:
         with file_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
         # Also append an event for discoverability
-        self.append_event({
-            "event": "contact_summary_written",
-            "contact_id": contact_id,
-            "path": str(file_path),
-        })
+        self.append_event(
+            {
+                "event": "contact_summary_written",
+                "contact_id": contact_id,
+                "path": str(file_path),
+            }
+        )
         return file_path
 
     def write_final_summary(self, summary: Dict[str, Any]) -> Path:
@@ -74,15 +78,17 @@ class RunSummaryWriter:
         self.run_dir.mkdir(parents=True, exist_ok=True)
         with self.summary_json_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        self.append_event({
-            "event": "final_summary_written",
-            "path": str(self.summary_json_path),
-            "totals": {
-                "total_contacts": data.get("total_contacts"),
-                "successful_contacts": data.get("successful_contacts"),
-                "failed_contacts": data.get("failed_contacts"),
-            },
-        })
+        self.append_event(
+            {
+                "event": "final_summary_written",
+                "path": str(self.summary_json_path),
+                "totals": {
+                    "total_contacts": data.get("total_contacts"),
+                    "successful_contacts": data.get("successful_contacts"),
+                    "failed_contacts": data.get("failed_contacts"),
+                },
+            }
+        )
         return self.summary_json_path
 
     def get_run_directory(self) -> Path:
