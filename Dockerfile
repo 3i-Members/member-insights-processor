@@ -37,11 +37,11 @@ COPY config/ ./config/
 COPY context/ ./context/
 COPY scripts/ ./scripts/
 COPY tests/ ./tests/
-COPY setup.py .
+COPY pyproject.toml .
 COPY README.md .
 
 # Create necessary directories
-RUN mkdir -p logs output logs/runs logs/claims
+RUN mkdir -p var/logs/llm_traces var/logs/runs var/logs/claims var/output/insights var/output/summaries
 
 # Install the package
 RUN pip install -e .

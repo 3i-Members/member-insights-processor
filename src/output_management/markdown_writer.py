@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class MarkdownWriter:
     """Handles writing AI outputs to markdown files with metadata."""
     
-    def __init__(self, output_directory: str = "output/member_summaries/"):
+    def __init__(self, output_directory: str = "var/output/member_summaries/"):
         """
         Initialize the markdown writer.
         
@@ -405,7 +405,7 @@ def create_markdown_writer(output_directory: Optional[str] = None) -> MarkdownWr
         MarkdownWriter: Configured writer instance
     """
     if output_directory is None:
-        output_directory = "output/member_summaries/"
+        output_directory = "var/output/member_summaries/"
     
     return MarkdownWriter(output_directory) 
 

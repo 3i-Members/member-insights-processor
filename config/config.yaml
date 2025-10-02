@@ -302,7 +302,7 @@ processing:
 # Logging Configuration
 logging:
   level: "INFO"
-  log_file: "logs/processing.log"
+  log_file: "var/logs/processing.log"
   max_log_size_mb: 10
   backup_count: 5
 
@@ -320,7 +320,7 @@ debug:
   enable_debug_mode: false
   llm_trace:
     enabled: true
-    output_dir: "logs/llm_traces"  # Local default; when 'remote_output_uri' is set and enable_debug_mode is false, traces go to GCS
+    output_dir: "var/logs/llm_traces"  # Local default; when 'remote_output_uri' is set and enable_debug_mode is false, traces go to GCS
     include_rendered_prompts: true
     include_token_stats: true
     include_response: true

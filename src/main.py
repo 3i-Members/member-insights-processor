@@ -51,7 +51,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('logs/processing.log'),
+        logging.FileHandler('var/logs/processing.log'),
         logging.StreamHandler()
     ]
 )
@@ -348,7 +348,7 @@ class MemberInsightsProcessor:
             trace_file_path = None
             trace_writer = None
             if llm_trace_enabled:
-                trace_writer = LLMTraceWriter(llm_trace_cfg.get('output_dir', 'logs/llm_traces'))
+                trace_writer = LLMTraceWriter(llm_trace_cfg.get('output_dir', 'var/logs/llm_traces'))
                 trace_file_path = trace_writer.start_trace(
                     contact_id,
                     llm_trace_cfg.get('file_naming_pattern', 'llm_trace_{contact_id}_{timestamp}.md')

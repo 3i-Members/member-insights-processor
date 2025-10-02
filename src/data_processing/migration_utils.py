@@ -28,7 +28,7 @@ class MigrationManager:
     
     def __init__(self, 
                  supabase_client: SupabaseInsightsClient,
-                 source_directory: str = "output/structured_insights",
+                 source_directory: str = "var/output/structured_insights",
                  backup_directory: Optional[str] = None):
         """
         Initialize migration manager.
@@ -293,7 +293,7 @@ def run_migration_cli():
     import sys
     
     parser = argparse.ArgumentParser(description="Migrate structured insights to Supabase")
-    parser.add_argument("--source-dir", default="output/structured_insights",
+    parser.add_argument("--source-dir", default="var/output/structured_insights",
                        help="Source directory containing JSON files")
     parser.add_argument("--backup-dir", help="Backup directory for migrated files")
     parser.add_argument("--force", action="store_true", help="Force overwrite existing records")

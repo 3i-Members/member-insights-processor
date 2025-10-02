@@ -156,8 +156,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project-specific
-logs/
-output/
+var/                                 # All runtime artifacts (logs, output, etc.)
 *.lock
 config/files/*.csv
 config/files/*.json

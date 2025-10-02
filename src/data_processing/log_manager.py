@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class ProcessingLogManager:
     """Manages processing logs to track completed ENI IDs and prevent reprocessing."""
     
-    def __init__(self, log_file_path: str = "logs/processed_records.json"):
+    def __init__(self, log_file_path: str = "var/logs/processed_records.json"):
         """
         Initialize the log manager.
         
@@ -319,6 +319,6 @@ def create_log_manager(log_file_path: Optional[str] = None) -> ProcessingLogMana
         ProcessingLogManager: Configured log manager instance
     """
     if log_file_path is None:
-        log_file_path = "logs/processed_records.json"
+        log_file_path = "var/logs/processed_records.json"
     
     return ProcessingLogManager(log_file_path) 

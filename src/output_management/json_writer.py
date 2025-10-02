@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class JSONWriter:
     """Handles writing structured content to JSON files."""
     
-    def __init__(self, output_directory: str = "output/structured_insights/"):
+    def __init__(self, output_directory: str = "var/output/structured_insights/"):
         """
         Initialize the JSON writer.
         
@@ -180,7 +180,7 @@ class JSONWriter:
         return insights_data
 
 
-def create_json_writer(output_directory: str = "output/structured_insights/") -> JSONWriter:
+def create_json_writer(output_directory: str = "var/output/structured_insights/") -> JSONWriter:
     """
     Factory function to create a JSON writer.
     
