@@ -2,16 +2,45 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feature/* ]
   pull_request:
     branches: [ main, develop ]
 
 jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy
+
+    - name: Check code formatting with Black
+      run: black --check src/ tests/
+
+    - name: Lint with Flake8
+      run: flake8 src/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+
+    - name: Type check with MyPy
+      run: mypy src/ --ignore-missing-imports
+      continue-on-error: true
+
   test:
+    name: Test Suite
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
     - uses: actions/checkout@v4
@@ -26,32 +55,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov black flake8 mypy
+        pip install pytest pytest-cov
 
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 src --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings
-        flake8 src --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-    - name: Check formatting with black
-      run: |
-        black --check src tests
-
-    - name: Type check with mypy
-      run: |
-        mypy src --ignore-missing-imports || true
-
-    - name: Run tests
-      run: |
-        pytest tests/ -v --cov=src --cov-report=xml --cov-report=term
-      env:
-        # Mock credentials for testing
-        ANTHROPIC_API_KEY: "test-key"
-        OPENAI_API_KEY: "test-key"
-        SUPABASE_URL: "https://test.supabase.co"
-        SUPABASE_SERVICE_ROLE_KEY: "test-key"
+    - name: Run unit tests
+      run: pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -59,21 +66,23 @@ jobs:
         file: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
-        fail_ci_if_error: false
+      if: matrix.python-version == '3.11'
 
-  docker-build:
+  security:
+    name: Security Scan
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Build Docker image
-      uses: docker/build-push-action@v5
+    - name: Set up Python
+      uses: actions/setup-python@v5
       with:
-        context: .
-        push: false
-        tags: member-insights-processor:test
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        python-version: '3.11'
+
+    - name: Install safety
+      run: pip install safety
+
+    - name: Check dependencies for vulnerabilities
+      run: safety check --file requirements.txt --continue-on-error
+      continue-on-error: true

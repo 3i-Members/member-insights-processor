@@ -140,6 +140,8 @@ cython_debug/
 # IDEs
 .idea/
 .vscode/
+.cursor/
+.claude/
 *.swp
 *.swo
 *~
