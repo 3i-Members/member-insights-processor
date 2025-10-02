@@ -3,7 +3,7 @@ import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any, Tuple, List
 import logging
-from utils.token_utils import estimate_tokens
+from member_insights_processor.core.utils.tokens import estimate_tokens
 
 logger = logging.getLogger(__name__)
 

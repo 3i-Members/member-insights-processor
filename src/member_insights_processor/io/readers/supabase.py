@@ -17,9 +17,9 @@ from functools import wraps
 from supabase import create_client, Client
 from postgrest.exceptions import APIError
 import json
-from utils.token_utils import estimate_tokens
+from member_insights_processor.core.utils.tokens import estimate_tokens
 
-from .schema import (
+from member_insights_processor.io.schema import (
     StructuredInsight,
     InsightMetadata,
     StructuredInsightContent,

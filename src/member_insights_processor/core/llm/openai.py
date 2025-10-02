@@ -15,8 +15,8 @@ from openai import OpenAI
 import openai as openai_pkg
 import threading
 import random
-from utils.token_utils import estimate_tokens
-from context_management.config_loader import create_config_loader
+from member_insights_processor.core.utils.tokens import estimate_tokens
+from member_insights_processor.pipeline.config import create_config_loader
 
 logger = logging.getLogger(__name__)
 

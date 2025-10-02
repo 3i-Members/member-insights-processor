@@ -14,8 +14,8 @@ import logging
 import json
 import re
 
-from .supabase_client import SupabaseInsightsClient, SupabaseOperationError
-from .schema import (
+from member_insights_processor.io.readers.supabase import SupabaseInsightsClient, SupabaseOperationError
+from member_insights_processor.io.schema import (
     StructuredInsight,
     InsightMetadata,
     StructuredInsightContent,

@@ -27,24 +27,24 @@ else:
     print("⚠️  No .env file found, using system environment variables")
 
 # Import all components
-from data_processing.bigquery_connector import create_bigquery_connector
-from data_processing.log_manager import create_log_manager
-from data_processing.supabase_client import SupabaseInsightsClient
-from data_processing.supabase_insights_processor import SupabaseInsightsProcessor
-from context_management.config_loader import create_config_loader
-from context_management.markdown_reader import create_markdown_reader
-from context_management.processing_filter import create_processing_filter
-from context_management.context_manager import ContextManager
-from ai_processing.gemini_processor import create_gemini_processor
-from ai_processing.openai_processor import create_openai_processor
-from ai_processing.anthropic_processor import AnthropicProcessor
-from output_management.markdown_writer import create_markdown_writer
-from output_management.json_writer import create_json_writer
-from output_management.airtable_writer import create_structured_airtable_writer
-from utils.enhanced_logger import create_enhanced_logger
-from utils.token_utils import estimate_tokens
-from output_management.markdown_writer import LLMTraceWriter
-from output_management.supabase_airtable_sync import SupabaseAirtableSync
+from member_insights_processor.io.readers.bigquery import create_bigquery_connector
+from member_insights_processor.io.log_manager import create_log_manager
+from member_insights_processor.io.readers.supabase import SupabaseInsightsClient
+from member_insights_processor.io.writers.supabase import SupabaseInsightsProcessor
+from member_insights_processor.pipeline.config import create_config_loader
+from member_insights_processor.io.readers.markdown import create_markdown_reader
+from member_insights_processor.pipeline.filters import create_processing_filter
+from member_insights_processor.pipeline.context import ContextManager
+from member_insights_processor.core.llm.gemini import create_gemini_processor
+from member_insights_processor.core.llm.openai import create_openai_processor
+from member_insights_processor.core.llm.anthropic import AnthropicProcessor
+from member_insights_processor.io.writers.markdown import create_markdown_writer
+from member_insights_processor.io.writers.json import create_json_writer
+from member_insights_processor.io.writers.airtable import create_structured_airtable_writer
+from member_insights_processor.core.utils.logging import create_enhanced_logger
+from member_insights_processor.core.utils.tokens import estimate_tokens
+from member_insights_processor.io.writers.markdown import LLMTraceWriter
+from member_insights_processor.io.writers.supabase_sync import SupabaseAirtableSync
 
 # Configure logging
 logging.basicConfig(
@@ -239,7 +239,7 @@ class MemberInsightsProcessor:
             gemini_api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
             if gemini_api_key:
                 try:
-                    from ai_processing.gemini_processor import create_gemini_processor
+                    from member_insights_processor.core.llm.gemini import create_gemini_processor
                     gemini_test_processor = create_gemini_processor()
                     gemini_info = gemini_test_processor.get_model_info()
                     report['component_status']['gemini'] = gemini_info

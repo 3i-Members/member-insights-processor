@@ -11,9 +11,9 @@ from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from data_processing.supabase_client import SupabaseInsightsClient, SupabaseOperationError
-from data_processing.schema import StructuredInsight, ProcessingStatus
-from output_management.airtable_writer import StructuredInsightsAirtableWriter
+from member_insights_processor.io.readers.supabase import SupabaseInsightsClient, SupabaseOperationError
+from member_insights_processor.io.schema import StructuredInsight, ProcessingStatus
+from member_insights_processor.io.writers.airtable import StructuredInsightsAirtableWriter
 
 logger = logging.getLogger(__name__)
 

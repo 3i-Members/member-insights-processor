@@ -92,13 +92,13 @@ Repository = "https://github.com/3i-Members/member-insights-processor"
 Issues = "https://github.com/3i-Members/member-insights-processor/issues"
 
 [project.scripts]
-member-insights = "src.main:main"
+mip = "member_insights_processor.pipeline.runner:main"
 
 [tool.setuptools]
-packages = ["src"]
+packages = {find = {where = ["src"], include = ["member_insights_processor*"]}}
 
 [tool.setuptools.package-dir]
-"" = "."
+member_insights_processor = "src/member_insights_processor"
 
 [tool.black]
 line-length = 100
